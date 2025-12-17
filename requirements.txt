@@ -1,10 +1,7 @@
 streamlit
-pyttsx3
 gtts
-TTS
-speechrecognition
-pocketsphinx
 PyPDF2
 ebooklib
 beautifulsoup4
 pydub
+speechrecognition
