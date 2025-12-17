@@ -20,6 +20,7 @@ def running_on_streamlit_cloud():
 CLOUD_MODE = running_on_streamlit_cloud()
 
 # --- Local environment setup ---
+"""
 if not CLOUD_MODE:
     os.environ.setdefault("STREAMLIT_LOCAL", "1")
     required_packages = [
@@ -37,7 +38,8 @@ if not CLOUD_MODE:
         try:
             __import__(pkg.split("==")[0])
         except ImportError:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg]) 
+            """
 
 # --- Helper functions ---
 def chunk_text(text, max_words=1500):
