@@ -67,17 +67,6 @@ Locally, you’ll see all available engines.
 
 ---
 
-📂 Project Structure
-`
-smart-audiobook-app/
-│── app.py # Main
-│── requirements.txt  # lightweight
-│── requirements-local.txt  # Full
-│── README.md # docus
-`
-
----
-
 🚀 Deployment
 
 Streamlit Cloud
