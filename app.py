@@ -42,15 +42,15 @@ def merge_audio(files, output_file="audiobook.mp3"):
 st.set_page_config(page_title="Smart Audiobook Converter", layout="centered")
 st.title("📚 Smart Book-to-Audiobook Converter")
 
-mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"])
+mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"], key="mode_radio")
 
 # --- TEXT TO AUDIO ---
 if mode == "Text → Audio":
-    option = st.radio("Input type:", ["Type text", "Upload book"])
+    option = st.radio("Input type:", ["Type text", "Upload book"], key="input_radio")
     text = ""
 
     if option == "Type text":
-        text = st.text_area("Enter text:", "Hello Abdullahi, welcome back!")
+        text = st.text_area("Enter text:", "Hello dear, welcome back!", key="textarea")
     else:
         uploaded_file = st.file_uploader("Upload a book (TXT, PDF, EPUB)", type=["txt", "pdf", "epub"])
         if uploaded_file:
@@ -70,13 +70,13 @@ if mode == "Text → Audio":
 
     # Engine choices depend on environment
     if CLOUD_MODE:
-        engine_choice = st.radio("Choose engine:", ["gTTS (Google, online)"])
+        engine_choice = st.radio("Choose engine:", ["gTTS (Google, online)"], key="engine_radio")
     else:
-        engine_choice = st.radio("Choose engine:", ["pyttsx3 (offline)", "gTTS (Google, online)", "Coqui TTS (neural)"])
+        engine_choice = st.radio("Choose engine:", ["pyttsx3 (offline)", "gTTS (Google, online)", "Coqui TTS (neural)"], key="engine_radio")
 
-    language = st.selectbox("Language", ["en", "fr", "es", "ha", "ar"])
-    rate = st.slider("Speech rate", 100, 250, 150)
-    volume = st.slider("Volume", 0.0, 1.0, 1.0)
+    language = st.selectbox("Language", ["en", "fr", "es", "ha", "ar"], key="language_select")
+    rate = st.slider("Speech rate", 100, 250, 150, key="rate_slider")
+    volume = st.slider("Volume", 0.0, 1.0, 1.0, key="volume_slider")
 
     if st.button("🎙️ Convert to Audiobook") and text:
         chunks = chunk_text(text)
