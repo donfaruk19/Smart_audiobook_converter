@@ -132,7 +132,7 @@ else:
             current = []
     if current:
         chunks.append(" ".join(current))
-    return chunks
+        return chunks
 
 def merge_audio(files, output_file="audiobook.mp3"):
     combined = None
