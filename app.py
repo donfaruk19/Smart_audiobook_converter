@@ -17,7 +17,10 @@ import json
 def running_on_streamlit_cloud():
     return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
 
+# --- Streamlit UI ---
 st.set_page_config(page_title="Smart Audiobook Converter", layout="centered")
+st.title("📚 Smart Book-to-Audiobook Converter")
+
 CLOUD_MODE = running_on_streamlit_cloud()
 
 # ---- local env----
@@ -103,8 +106,7 @@ def write_manifest(files, durations_ms, outfile="chapters.json"):
         json.dump({"chapters": chapters}, f, indent=2)
     return outfile
 
-# --- Streamlit UI ---
-st.title("📚 Smart Book-to-Audiobook Converter")
+
 
 mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"], key="mode_radio")
 
