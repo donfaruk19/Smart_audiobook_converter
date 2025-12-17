@@ -177,38 +177,6 @@ def write_manifest(files, durations_ms, outfile="chapters.json"):
         json.dump({"chapters": chapters}, f, indent=2)
     return outfile
 
-# --- Modes ---
-mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"])
-
-# --- TEXT → AUDIO ---
-if mode == "Text → Audio":
-    option = st.radio("Input type:", ["Type text", "Upload book"])
-    text = ""
-
-    if option == "Type text":
-        text = st.text_area("Enter text:", "Hello Abdullahi, welcome back!")
-    else:
-        uploaded_file = st.file_uploader("Upload a book (TXT, PDF, EPUB)", type=["txt", "pdf", "epub"])
-        if uploaded_file:
-            if uploaded_file.name.endswith(".txt"):
-                text = uploaded_file.read().decode("utf-8", errors="ignore")
-            elif uploaded_file.name.endswith(".pdf"):
-                reader = PdfReader(uploaded_file)
-                text = " ".join([page.extract_text() or "" for page in reader.pages])
-            elif uploaded_file.name.endswith(".epub"):
-                book = epub.read_epub(uploaded_file)
-                text_content = []
-                for item in book.get_items():
-                    if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                        soup = BeautifulSoup(item.get_content(), "html.parser")
-                        text_content.append(soup.get_text(separator=" "))
-                text = " ".join(text_content)
-
-    engine_choice = st.radio("Choose engine:", ["pyttsx3 (offline)", "gTTS (online)", "Coqui TTS (neural, offline-capable)"])
-    language = st.selectbox("Language", ["en", "fr", "es", "ha", "ar"])
-    rate = st.slider("Speech rate", 100, 250, 150)
-    volume = st.slider("Volume", 0.0, 1.0, 1.0)
-
     merge_opt = st.checkbox("Merge chapters into one audiobook", value=True)
 
     if st.button("🎙️ Convert"):
