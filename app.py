@@ -241,8 +241,7 @@ if mode == "Text → Audio":
                     filename = f"chapter_{i}.wav"
                     tts.tts_to_file(text=chunk, file_path=filename)
                 else:
-                    except Exception as e:
-                    st.error(f"Transcription failed: {e}")
+                    st.error("X Unsupported Engine Choice")
                     
 
                 audio_files.append(filename)
