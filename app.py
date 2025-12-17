@@ -1,6 +1,4 @@
 import os
-import subprocess
-import time
 import streamlit as st
 import pyttsx3
 from gtts import gTTS
@@ -13,21 +11,13 @@ from ebooklib import epub
 from bs4 import BeautifulSoup
 from pydub import AudioSegment
 
-# --- Auto-install dependencies ---
-def install_if_missing(package):
-    try:
-        __import__(package)
-    except ImportError:
-        subprocess.check_call(["pip", "install", package])
+# --- Detect Streamlit Cloud environment ---
+def running_on_streamlit_cloud():
+    return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
 
-for pkg in ["pyttsx3", "gtts", "TTS", "streamlit", "speechrecognition", "pocketsphinx", "PyPDF2", "ebooklib", "bs4", "pydub"]:
-    install_if_missing(pkg)
+CLOUD_MODE = running_on_streamlit_cloud()
 
-st.set_page_config(page_title="Smart Audiobook Generator", layout="centered")
-st.title("📚 Smart Book-to-Audiobook Converter")
-st.write("Free, open-source, cross-platform app for text-to-speech and speech-to-text with progress and chapter markers.")
-
-# --- Helpers ---
+# --- Helper functions ---
 def chunk_text(text, max_words=1500):
     words = text.split()
     chunks, current = [], []
@@ -35,6 +25,109 @@ def chunk_text(text, max_words=1500):
         current.append(w)
         if len(current) >= max_words:
             chunks.append(" ".join(current))
+            current = []
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
+def merge_audio(files, output_file="audiobook.mp3"):
+    combined = None
+    durations = []
+    for file in files:
+        audio = AudioSegment.from_file(file)
+        durations.append(len(audio))
+        combined = audio if combined is None else combined + audio
+    combined.export(output_file, format="mp3")
+    return output_file, durations
+
+# --- Streamlit UI ---
+st.set_page_config(page_title="Smart Audiobook Converter", layout="centered")
+st.title("📚 Smart Book-to-Audiobook Converter")
+
+mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"])
+
+# --- TEXT TO AUDIO ---
+if mode == "Text → Audio":
+    option = st.radio("Input type:", ["Type text", "Upload book"])
+    text = ""
+
+    if option == "Type text":
+        text = st.text_area("Enter text:", "Hello Abdullahi, welcome back!")
+    else:
+        uploaded_file = st.file_uploader("Upload a book (TXT, PDF, EPUB)", type=["txt", "pdf", "epub"])
+        if uploaded_file:
+            if uploaded_file.name.endswith(".txt"):
+                text = uploaded_file.read().decode("utf-8", errors="ignore")
+            elif uploaded_file.name.endswith(".pdf"):
+                reader = PdfReader(uploaded_file)
+                text = " ".join([page.extract_text() or "" for page in reader.pages])
+            elif uploaded_file.name.endswith(".epub"):
+                book = epub.read_epub(uploaded_file)
+                text_content = []
+                for item in book.get_items():
+                    if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                        soup = BeautifulSoup(item.get_content(), "html.parser")
+                        text_content.append(soup.get_text(separator=" "))
+                text = " ".join(text_content)
+
+    # Engine choices depend on environment
+    if CLOUD_MODE:
+        engine_choice = st.radio("Choose engine:", ["gTTS (Google, online)"])
+    else:
+        engine_choice = st.radio("Choose engine:", ["pyttsx3 (offline)", "gTTS (Google, online)", "Coqui TTS (neural)"])
+
+    language = st.selectbox("Language", ["en", "fr", "es", "ha", "ar"])
+    rate = st.slider("Speech rate", 100, 250, 150)
+    volume = st.slider("Volume", 0.0, 1.0, 1.0)
+
+    if st.button("🎙️ Convert to Audiobook") and text:
+        chunks = chunk_text(text)
+        audio_files = []
+        for i, chunk in enumerate(chunks, start=1):
+            if engine_choice == "pyttsx3 (offline)" and not CLOUD_MODE:
+                engine = pyttsx3.init()
+                engine.setProperty('rate', rate)
+                engine.setProperty('volume', volume)
+                filename = f"chapter_{i}.mp3"
+                engine.save_to_file(chunk, filename)
+                engine.runAndWait()
+            elif engine_choice == "gTTS (Google, online)":
+                tts = gTTS(text=chunk, lang=language)
+                filename = f"chapter_{i}.mp3"
+                tts.save(filename)
+            elif engine_choice == "Coqui TTS (neural)" and not CLOUD_MODE:
+                tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+                filename = f"chapter_{i}.wav"
+                tts.tts_to_file(text=chunk, file_path=filename)
+            audio_files.append(filename)
+
+        final_file, durations = merge_audio(audio_files, "audiobook.mp3")
+        st.success("✅ Audiobook ready!")
+        st.audio(final_file, format="audio/mp3")
+
+# --- AUDIO TO TEXT ---
+else:
+    uploaded_audio = st.file_uploader("Upload audio file (WAV/MP3)", type=["wav", "mp3"])
+    if uploaded_audio and st.button("📝 Convert to Text"):
+        recognizer = sr.Recognizer()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_audio.name.split('.')[-1]}") as tmpfile:
+            tmpfile.write(uploaded_audio.read())
+            tmpfile.flush()
+            with sr.AudioFile(tmpfile.name) as source:
+                audio_data = recognizer.record(source)
+                try:
+                    if CLOUD_MODE:
+                        text = recognizer.recognize_google(audio_data)
+                    else:
+                        # Allow offline PocketSphinx locally
+                        try:
+                            text = recognizer.recognize_sphinx(audio_data)
+                        except Exception:
+                            text = recognizer.recognize_google(audio_data)
+                    st.success("✅ Transcription complete:")
+                    st.text_area("Transcribed text:", text, height=250)
+                except Exception as e:
+                    st.error(f"Transcription failed: {e}")            chunks.append(" ".join(current))
             current = []
     if current:
         chunks.append(" ".join(current))
