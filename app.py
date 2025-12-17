@@ -1,8 +1,6 @@
 import os
 import streamlit as st
-import pyttsx3
 from gtts import gTTS
-from TTS.api import TTS
 import tempfile
 import speech_recognition as sr
 from PyPDF2 import PdfReader
@@ -226,6 +224,7 @@ if mode == "Text → Audio":
             for i, chunk in enumerate(chunks, start=1):
                 status.markdown(f"Converting chapter {i}/{len(chunks)} …")
                 if engine_choice == "pyttsx3 (offline)":
+                    import pyttsx3
                     engine = pyttsx3.init()
                     engine.setProperty('rate', rate)
                     engine.setProperty('volume', volume)
@@ -236,12 +235,15 @@ if mode == "Text → Audio":
                     tts = gTTS(text=chunk, lang=language)
                     filename = f"chapter_{i}.mp3"
                     tts.save(filename)
-                else:
-                    # Choose a multilingual or specific model if available
-                    model_name = "tts_models/en/ljspeech/tacotron2-DDC"
-                    tts = TTS(model_name=model_name, progress_bar=False, gpu=False)
+                elif engine_choice == "Coqui TTS (neural)" and not CLOUD_MODE:
+                    from TTS.api import TTS
+                    tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
                     filename = f"chapter_{i}.wav"
                     tts.tts_to_file(text=chunk, file_path=filename)
+                else:
+                    except Exception as e:
+                    st.error(f"Transcription failed: {e}")
+                    
 
                 audio_files.append(filename)
                 progress.progress(i / len(chunks))
@@ -285,6 +287,8 @@ else:
                     if engine_stt == "Google (free)":
                         text = recognizer.recognize_google(audio_data)
                     else:
+                        # Allow offline PocketSphinx locally
+                        import pocketsphinx
                         text = recognizer.recognize_sphinx(audio_data)
                     st.success("✅ Transcription complete:")
                     st.text_area("Transcribed text:", text, height=250)
