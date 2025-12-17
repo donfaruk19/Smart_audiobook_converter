@@ -128,11 +128,6 @@ else:
                     st.text_area("Transcribed text:", text, height=250)
                 except Exception as e:
                     st.error(f"Transcription failed: {e}")            
-                    chunks.append(" ".join(current))
-            current = []
-    if current:
-        chunks.append(" ".join(current))
-        return chunks
 
 def merge_audio(files, output_file="audiobook.mp3"):
     combined = None
