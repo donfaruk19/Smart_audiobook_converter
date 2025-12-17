@@ -127,7 +127,8 @@ else:
                     st.success("✅ Transcription complete:")
                     st.text_area("Transcribed text:", text, height=250)
                 except Exception as e:
-                    st.error(f"Transcription failed: {e}")            chunks.append(" ".join(current))
+                    st.error(f"Transcription failed: {e}")            
+                    chunks.append(" ".join(current))
             current = []
     if current:
         chunks.append(" ".join(current))
