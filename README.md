@@ -70,10 +70,10 @@ Locally, you’ll see all available engines.
 📂 Project Structure
 `
 smart-audiobook-app/
-│── app.py                  # Main Streamlit app
-│── requirements.txt        # Lightweight for Streamlit Cloud
-│── requirements-local.txt  # Full dependencies for local use
-│── README.md               # Project documentation
+│── app.py # Main
+│── requirements.txt  # lightweight
+│── requirements-local.txt  # Full
+│── README.md # docus
 `
 
 ---
@@ -117,6 +117,6 @@ streamlit run app.py
 - Heading detection for chapter names.  
 - Offline caching for uploaded books.  
 
+---
 Made with ❤️ by Donfaruk19
 
-This file is ready to paste into your repo as README.md. It will give your project a professional look with badges, clear instructions, and deployment info.
