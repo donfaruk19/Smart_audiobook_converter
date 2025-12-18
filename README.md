@@ -2,7 +2,7 @@
 
 A free, open‑source Streamlit app that converts text ↔ audio and supports full book‑to‑audiobook conversion with chapter markers, progress tracking, and transcription.
 
-![Open in Streamlit](https://yourusername-smart-audiobook-app.streamlit.app)
+![Open in Streamlit](https://donfaruk19-smart-audiobook-app.streamlit.app)
 !Python
 !License
 
@@ -69,16 +69,9 @@ Locally, you’ll see all available engines.
 
 🚀 Deployment
 
-Streamlit Cloud
-1. Push this repo to GitHub.
-2. Go to Streamlit Cloud.
-3. Sign in with GitHub → New App → select this repo.
-4. Set file path to app.py.
-5. Deploy and share your app link!
-
 Local
 `bash
-git clone https://github.com/yourusername/smart-audiobook-app.git
+git clone https://github.com/donfaruk19/smart-audiobook-app.git
 cd smart-audiobook-app
 pip install -r requirements-local.txt
 streamlit run app.py
