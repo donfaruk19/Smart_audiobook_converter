@@ -1,30 +1,48 @@
 import os
-import subprocess
 import sys
-import streamlit as st
-from gtts import gTTS
+import time
+import json
 import tempfile
+
+import streamlit as st
+
+# --- Audio / Speech packages ---
+from pydub import AudioSegment
 import speech_recognition as sr
+
+# --- TTS engines (loaded lazily inside functions where useful) ---
+from gtts import gTTS  # Online voice (fast)
+
+# --- Document packages ---
 from PyPDF2 import PdfReader
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
-from pydub import AudioSegment
-import time
-import json
 
-# --- Detect Streamlit Cloud environment ---
+# Optional packages (we'll guard usage)
+# - pyttsx3 (Offline voice - basic)
+# - TTS (Coqui; Neural voice - advanced)
+# - python-docx (DOCX support)
+# - streamlit-webrtc (Recording)
+
+# ============================================================
+# Page config MUST be the first Streamlit command
+# ============================================================
+st.set_page_config(page_title="Donfaruk19 → Smart Audiobook Converter", layout="centered")
+
+# ============================================================
+# Environment detection
+# ============================================================
 def running_on_streamlit_cloud():
     return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Donfaruk19→Smart Audiobook Converter", layout="centered")
-st.title("📚 Donfaruk19→Smart Audiobook Converter")
-'''Developed by Donfaruk19'''
 CLOUD_MODE = running_on_streamlit_cloud()
 
-# --- Helper functions ---
+# ============================================================
+# Helpers
+# ============================================================
 def chunk_text(text, max_words=1500):
+    """Split text into word-limited chunks."""
     words = text.split()
     chunks, current = [], []
     for w in words:
@@ -36,17 +54,21 @@ def chunk_text(text, max_words=1500):
         chunks.append(" ".join(current))
     return chunks
 
+
 def merge_audio(files, output_file="audiobook.mp3"):
+    """Concatenate multiple audio files to a single MP3; return durations for chapter markers."""
     combined = None
     total_duration_ms = 0
     durations = []
     for file in files:
         audio = AudioSegment.from_file(file)
-        durations.append(len(audio))
-        total_duration_ms += len(audio)
+        dur = len(audio)
+        durations.append(dur)
+        total_duration_ms += dur
         combined = audio if combined is None else combined + audio
     combined.export(output_file, format="mp3")
     return output_file, durations, total_duration_ms
+
 
 def ms_to_vtt(ts_ms):
     hours = ts_ms // 3600000
@@ -57,9 +79,10 @@ def ms_to_vtt(ts_ms):
     millis = rem % 1000
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
 
+
 def write_vtt(durations, outfile="chapters.vtt"):
     start_ms = 0
-    lines = ["WEBVTT\n"]
+    lines = ["WEBVTT", ""]
     for i, dur in enumerate(durations):
         end_ms = start_ms + dur
         lines.append(f"Chapter {i+1}")
@@ -69,6 +92,7 @@ def write_vtt(durations, outfile="chapters.vtt"):
     with open(outfile, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     return outfile
+
 
 def write_manifest(files, durations_ms, outfile="chapters.json"):
     chapters = []
@@ -86,120 +110,342 @@ def write_manifest(files, durations_ms, outfile="chapters.json"):
     return outfile
 
 
+def read_document(uploaded_file):
+    """Read document or text file to string. Supports TXT, PDF, EPUB, DOCX (if python-docx available), ODT (basic)."""
+    try:
+        name = uploaded_file.name.lower()
+        if name.endswith(".txt"):
+            return uploaded_file.read().decode("utf-8", errors="ignore")
+        elif name.endswith(".pdf"):
+            reader = PdfReader(uploaded_file)
+            return " ".join([page.extract_text() or "" for page in reader.pages])
+        elif name.endswith(".epub"):
+            book = epub.read_epub(uploaded_file)
+            text_content = []
+            for item in book.get_items():
+                if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                    soup = BeautifulSoup(item.get_content(), "html.parser")
+                    text_content.append(soup.get_text(separator=" "))
+            return " ".join(text_content)
+        elif name.endswith(".docx"):
+            try:
+                import docx
+            except Exception:
+                st.error("DOCX support requires python-docx. Please add it to requirements.")
+                return ""
+            doc = docx.Document(uploaded_file)
+            return " ".join([para.text for para in doc.paragraphs])
+        elif name.endswith(".odt"):
+            # Minimal ODT support via BeautifulSoup if content XML is provided
+            # Some ODT readers won't work with simple read; recommend installing odfpy for full support.
+            try:
+                content = uploaded_file.read()
+                soup = BeautifulSoup(content, "xml")
+                return " ".join([t.get_text(" ") for t in soup.find_all("text:p")]) or ""
+            except Exception as e:
+                st.error(f"Failed to read ODT: {e}")
+                return ""
+        else:
+            st.error("Unsupported document type.")
+            return ""
+    except Exception as e:
+        st.error(f"Failed to process file: {e}")
+        return ""
 
-mode = st.radio("Choose mode:", ["Text → Audio", "Audio → Text"], key="mode_radio")
 
-# --- TEXT TO AUDIO ---
+def save_uploaded_audio(uploaded_audio):
+    """Save uploaded audio to a temp file and return the path."""
+    try:
+        suffix = f".{uploaded_audio.name.split('.')[-1].lower()}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmpfile:
+            tmpfile.write(uploaded_audio.read())
+            tmpfile.flush()
+            return tmpfile.name
+    except Exception as e:
+        st.error(f"Failed to save uploaded audio: {e}")
+        return None
+
+
+def transcribe_file(path, engine_label):
+    """Transcribe audio file using selected engine."""
+    recognizer = sr.Recognizer()
+    try:
+        with sr.AudioFile(path) as source:
+            audio_data = recognizer.record(source)
+            if engine_label == "Cloud speech (free)":
+                try:
+                    return recognizer.recognize_google(audio_data)
+                except sr.UnknownValueError:
+                    st.error("Speech not recognized.")
+                except sr.RequestError as e:
+                    st.error(f"Cloud STT service error: {e}")
+            elif engine_label == "Offline speech (experimental)":
+                try:
+                    import pocketsphinx
+                except Exception:
+                    st.error("Offline speech requires pocketsphinx installed locally.")
+                    return ""
+                try:
+                    return recognizer.recognize_sphinx(audio_data)
+                except sr.UnknownValueError:
+                    st.error("Speech not recognized (offline).")
+                except Exception as e:
+                    st.error(f"Offline STT error: {e}")
+            else:
+                st.error("Unsupported recognition engine.")
+    except Exception as e:
+        st.error(f"Failed to transcribe: {e}")
+    return ""
+
+
+SUPPORTED_TTS_LANGS = [
+    # Common, safe gTTS languages
+    "en", "fr", "es", "de", "it", "pt", "ru",
+    "zh-CN", "zh-TW", "ja", "ko", "hi", "ar", "tr",
+    "nl", "pl", "el", "sv", "ta", "te", "th", "vi"
+]
+
+
+def synthesize_chunk(chunk, engine_label, language, rate, volume, allow_neural):
+    """Synthesize a single chunk according to engine choice. Returns filename or raises."""
+    if not chunk or not chunk.strip():
+        raise ValueError("Empty text chunk")
+
+    # Online voice (fast): gTTS
+    if engine_label == "Online voice (fast)":
+        if language not in SUPPORTED_TTS_LANGS:
+            raise ValueError(f"Language '{language}' is not supported for online voice.")
+        tts = gTTS(text=chunk, lang=language)
+        filename = f"chapter_{int(time.time()*1000)}.mp3"
+        tts.save(filename)
+        return filename
+
+    # Offline voice (basic): pyttsx3
+    elif engine_label == "Offline voice (basic)":
+        try:
+            import pyttsx3
+        except Exception:
+            raise RuntimeError("Offline voice requires pyttsx3 installed locally.")
+        engine = pyttsx3.init()
+        try:
+            engine.setProperty('rate', int(rate))
+            engine.setProperty('volume', float(volume))
+        except Exception:
+            # Some voices/drivers may not support all properties
+            pass
+        filename = f"chapter_{int(time.time()*1000)}.mp3"
+        engine.save_to_file(chunk, filename)
+        engine.runAndWait()
+        return filename
+
+    # Neural voice (advanced): Coqui TTS
+    elif engine_label == "Neural voice (advanced)":
+        if not allow_neural:
+            raise RuntimeError("Neural voice is not available in cloud mode.")
+        try:
+            from TTS.api import TTS
+        except Exception:
+            raise RuntimeError("Neural voice requires Coqui TTS installed locally.")
+        # Example English model; adjust if you add multilingual models
+        tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
+        filename = f"chapter_{int(time.time()*1000)}.wav"
+        tts.tts_to_file(text=chunk, file_path=filename)
+        return filename
+
+    else:
+        raise RuntimeError("Unsupported engine choice")
+
+
+# ============================================================
+# UI
+# ============================================================
+st.title("📚 Donfaruk19 → Smart Audiobook Converter")
+st.caption("Developed by Donfaruk19")
+
+# Top-level mode
+mode = st.radio("Select feature", ["Text → Audio", "Audio → Text"], key="mode_radio")
+
+# ------------------------------------------------------------
+# TEXT → AUDIO
+# ------------------------------------------------------------
 if mode == "Text → Audio":
-    option = st.radio("Input type:", ["Type text", "Upload book"], key="input_radio")
+    option = st.radio("Text source", ["Type text", "Upload document"], key="input_radio")
+
     text = ""
-
     if option == "Type text":
-        text = st.text_area("Enter text:", "Hello dear, welcome back!", key="textarea")
+        text = st.text_area("Enter text", "Hello dear, welcome back!", key="textarea")
     else:
-        uploaded_file = st.file_uploader("Upload a book (TXT, PDF, EPUB)", type=["txt", "pdf", "epub"], key="book_uploader")
+        uploaded_file = st.file_uploader(
+            "Upload document",
+            type=["txt", "pdf", "epub", "docx", "odt"],
+            key="doc_uploader"
+        )
         if uploaded_file:
-            if uploaded_file.name.endswith(".txt"):
-                text = uploaded_file.read().decode("utf-8", errors="ignore")
-            elif uploaded_file.name.endswith(".pdf"):
-                reader = PdfReader(uploaded_file)
-                text = " ".join([page.extract_text() or "" for page in reader.pages])
-            elif uploaded_file.name.endswith(".epub"):
-                book = epub.read_epub(uploaded_file)
-                text_content = []
-                for item in book.get_items():
-                    if item.get_type() == ebooklib.ITEM_DOCUMENT:
-                        soup = BeautifulSoup(item.get_content(), "html.parser")
-                        text_content.append(soup.get_text(separator=" "))
-                text = " ".join(text_content)
+            text = read_document(uploaded_file)
 
+    # Engine list (clean names)
     if CLOUD_MODE:
-        engine_choice = st.radio("Choose engine:", ["gTTS (Google, online)"], key="engine_radio")
+        engine_choice = st.radio(
+            "Voice type",
+            ["Online voice (fast)"],
+            key="engine_radio"
+        )
     else:
-        engine_choice = st.radio("Choose engine:", ["pyttsx3 (offline)", "gTTS (Google, online)", "Coqui TTS (neural)"], key="engine_radio")
+        engine_choice = st.radio(
+            "Voice type",
+            ["Offline voice (basic)", "Online voice (fast)", "Neural voice (advanced)"],
+            key="engine_radio"
+        )
 
-    language = st.selectbox("Language", ["en", "fr", "es", "ha", "ar"], key="language_select")
+    language = st.selectbox(
+        "Speech language",
+        SUPPORTED_TTS_LANGS,
+        index=0,
+        key="language_select"
+    )
     rate = st.slider("Speech rate", 100, 250, 150, key="rate_slider")
     volume = st.slider("Volume", 0.0, 1.0, 1.0, key="volume_slider")
     merge_opt = st.checkbox("Merge chapters into one audiobook", value=True, key="merge_checkbox")
 
     if st.button("🎙️ Convert", key="convert_button"):
-        if not text.strip():
-            st.error("Please provide text or upload a book.")
+        if not text or not text.strip():
+            st.error("Please provide text or upload a document.")
         else:
             chunks = chunk_text(text)
-            st.info(f"Preparing {len(chunks)} chapters...")
-            progress = st.progress(0)
-            status = st.empty()
+            if not chunks:
+                st.error("No text content found after processing.")
+            else:
+                st.info(f"Preparing {len(chunks)} chapters...")
+                progress = st.progress(0)
+                status = st.empty()
 
-            audio_files = []
-            for i, chunk in enumerate(chunks, start=1):
-                status.markdown(f"Converting chapter {i}/{len(chunks)} …")
-                if engine_choice == "pyttsx3 (offline)" and not CLOUD_MODE:
-                    import pyttsx3
-                    engine = pyttsx3.init()
-                    engine.setProperty('rate', rate)
-                    engine.setProperty('volume', volume)
-                    filename = f"chapter_{i}.mp3"
-                    engine.save_to_file(chunk, filename)
-                    engine.runAndWait()
-                elif engine_choice == "gTTS (Google, online)":
-                    tts = gTTS(text=chunk, lang=language)
-                    filename = f"chapter_{i}.mp3"
-                    tts.save(filename)
-                elif engine_choice == "Coqui TTS (neural)" and not CLOUD_MODE:
-                    from TTS.api import TTS
-                    tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False, gpu=False)
-                    filename = f"chapter_{i}.wav"
-                    tts.tts_to_file(text=chunk, file_path=filename)
+                audio_files = []
+                for i, chunk in enumerate(chunks, start=1):
+                    status.markdown(f"Converting chapter {i}/{len(chunks)} …")
+                    try:
+                        filename = synthesize_chunk(
+                            chunk=chunk,
+                            engine_label=engine_choice,
+                            language=language,
+                            rate=rate,
+                            volume=volume,
+                            allow_neural=not CLOUD_MODE
+                        )
+                        audio_files.append(filename)
+                    except Exception as e:
+                        st.error(f"Conversion failed for chapter {i}: {e}")
+                        # Skip failed chapter and continue
+                    progress.progress(i / len(chunks))
+                    time.sleep(0.05)
+
+                if not audio_files:
+                    st.error("No chapters were generated.")
                 else:
-                    st.error("Unsupported Engine Choice")
-                    continue
+                    status.markdown("Generating chapter markers…")
+                    if merge_opt:
+                        try:
+                            final_file, durations, total_ms = merge_audio(audio_files, "audiobook.mp3")
+                            vtt_path = write_vtt(durations, "chapters.vtt")
+                            manifest_path = write_manifest(audio_files, durations, "chapters.json")
 
-                audio_files.append(filename)
-                progress.progress(i / len(chunks))
-                time.sleep(0.05)
+                            st.success("✅ Audiobook ready!")
+                            st.audio(final_file, format="audio/mp3")
+                            with open(final_file, "rb") as f:
+                                st.download_button(
+                                    "Download audiobook (MP3)", f,
+                                    file_name="audiobook.mp3",
+                                    key="download_mp3"
+                                )
+                            with open(vtt_path, "rb") as f:
+                                st.download_button(
+                                    "Download chapter markers (WebVTT)", f,
+                                    file_name="chapters.vtt",
+                                    key="download_vtt"
+                                )
+                            with open(manifest_path, "rb") as f:
+                                st.download_button(
+                                    "Download chapters manifest (JSON)", f,
+                                    file_name="chapters.json",
+                                    key="download_json"
+                                )
+                        except Exception as e:
+                            st.error(f"Failed to merge chapters: {e}")
 
-            status.markdown("Generating chapter markers…")
-            if merge_opt:
-                final_file, durations, total_ms = merge_audio(audio_files, "audiobook.mp3")
-                vtt_path = write_vtt(durations, "chapters.vtt")
-                manifest_path = write_manifest(audio_files, durations, "chapters.json")
+                    st.markdown("### Individual chapter files")
+                    for idx, file in enumerate(audio_files):
+                        try:
+                            st.audio(file)
+                            with open(file, "rb") as f:
+                                st.download_button(
+                                    f"Download {os.path.basename(file)}", f,
+                                    file_name=os.path.basename(file),
+                                    key=f"download_chapter_{idx}"
+                                )
+                        except Exception as e:
+                            st.error(f"Failed to render/download {file}: {e}")
 
-                st.success("✅ Audiobook ready!")
-                st.audio(final_file, format="audio/mp3")
-                with open(final_file, "rb") as f:
-                    st.download_button("Download audiobook (MP3)", f, file_name="audiobook.mp3", key="download_mp3")
-                with open(vtt_path, "rb") as f:
-                    st.download_button("Download chapter markers (WebVTT)", f, file_name="chapters.vtt", key="download_vtt")
-                with open(manifest_path, "rb") as f:
-                    st.download_button("Download chapters manifest (JSON)", f, file_name="chapters.json", key="download_json")
-
-            st.markdown("### Individual chapter files")
-            for idx, file in enumerate(audio_files):
-                st.audio(file)
-                with open(file, "rb") as f:
-                    st.download_button(f"Download {os.path.basename(file)}", f, file_name=os.path.basename(file), key=f"download_chapter_{idx}")
-
-# --- AUDIO TO TEXT ---
+# ------------------------------------------------------------
+# AUDIO → TEXT
+# ------------------------------------------------------------
 else:
-    uploaded_audio = st.file_uploader("Upload audio file (WAV/MP3)", type=["wav", "mp3"], key="audio_uploader")
-    engine_stt = st.radio("Recognition engine", ["Google (free)", "PocketSphinx (offline)"], key="stt_radio")
+    # Recording support (if streamlit-webrtc is available)
+    st.subheader("Record or upload audio for transcription")
+
+    can_record = False
+    try:
+        from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+        can_record = True
+    except Exception:
+        st.info("Recording is available locally with streamlit-webrtc. Add it to requirements to enable in cloud.")
+
+    if can_record:
+        class AudioCollector(AudioProcessorBase):
+            def __init__(self):
+                self.samples = []
+
+            def recv_audio(self, frame):
+                # Collect raw audio frames
+                self.samples.append(frame.to_ndarray())
+                return frame
+
+        st.write("Use the Start button below to record. Stop to finalize, then download and upload for transcription.")
+        webrtc_ctx = webrtc_streamer(key="speech_capture", audio_processor_factory=AudioCollector)
+        # For simplicity, we provide guidance rather than automatic saving of raw frames.
+
+    uploaded_audio = st.file_uploader(
+        "Upload audio file",
+        type=["wav", "mp3", "ogg", "flac", "m4a"],
+        key="audio_uploader"
+    )
+
+    engine_stt = st.radio(
+        "Recognition engine",
+        ["Cloud speech (free)", "Offline speech (experimental)"],
+        key="stt_radio"
+    )
+
     if uploaded_audio and st.button("📝 Convert to text", key="convert_text_button"):
-        recognizer = sr.Recognizer()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_audio.name.split('.')[-1]}") as tmpfile:
-            tmpfile.write(uploaded_audio.read())
-            tmpfile.flush()
-            with sr.AudioFile(tmpfile.name) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    if engine_stt == "Google (free)":
-                        text = recognizer.recognize_google(audio_data)
-                    else:
-                        import pocketsphinx
-                        text = recognizer.recognize_sphinx(audio_data)
-                    st.success("✅ Transcription complete:")
-                    st.text_area("Transcribed text:", text, height=250, key="transcribed_text")
-                    st.download_button("Download transcription (TXT)", text, file_name="transcription.txt", key="download_transcription")
-                except Exception as e:
-                    st.error(f"Transcription failed: {e}")
+        path = save_uploaded_audio(uploaded_audio)
+        if path:
+            text = transcribe_file(path, engine_stt)
+            if text and text.strip():
+                st.success("✅ Transcription complete")
+                st.text_area("Transcribed text", text, height=250, key="transcribed_text")
+                st.download_button(
+                    "Download transcription (TXT)",
+                    text,
+                    file_name="transcription.txt",
+                    key="download_transcription"
+                )
+            else:
+                st.error("No transcription result produced.")
+
+# ------------------------------------------------------------
+# AI-ready enhancements (placeholders for future integration)
+# ------------------------------------------------------------
+st.divider()
+st.subheader("Enhancements")
+st.markdown(
+    "- Summary, translation, keyword extraction, and smart chapter titles can be added with an AI service.\n"
+    "  For privacy and reliability, integrate a server-side AI endpoint and call it from this app."
+        )
