@@ -18,9 +18,9 @@ def running_on_streamlit_cloud():
     return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Smart Audiobook Converter", layout="centered")
-st.title("📚 Smart Audiobook Converter")
-
+st.set_page_config(page_title="Donfaruk19→Smart Audiobook Converter", layout="centered")
+st.title("📚 Donfaruk19→Smart Audiobook Converter")
+'''Developed by Donfaruk19'''
 CLOUD_MODE = running_on_streamlit_cloud()
 
 # --- Helper functions ---
