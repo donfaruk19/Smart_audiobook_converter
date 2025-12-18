@@ -19,31 +19,10 @@ def running_on_streamlit_cloud():
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Smart Audiobook Converter", layout="centered")
-st.title("📚 Smart Book-to-Audiobook Converter")
+st.title("📚 Smart Audiobook Converter")
 
 CLOUD_MODE = running_on_streamlit_cloud()
 
-# ---- local env----
-"""
-if not CLOUD_MODE:
-    os.environ.setdefault("STREAMLIT_LOCAL", "1")
-    required_packages = [
-        "pyttsx3",
-        "pocketsphinx",
-        "TTS",
-        "pydub",
-        "gtts",
-        "ebooklib",
-        "beautifulsoup4",
-        "PyPDF2",
-        "speechrecognition"
-    ]
-    for pkg in required_packages:
-        try:
-            __import__(pkg.split("==")[0])
-        except ImportError:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg]) 
-            """
 # --- Helper functions ---
 def chunk_text(text, max_words=1500):
     words = text.split()
