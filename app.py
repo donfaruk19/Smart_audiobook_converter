@@ -3,8 +3,11 @@ import sys
 import time
 import json
 import tempfile
-
 import streamlit as st
+import openai
+
+# Load API key securely from Streamlit secrets
+openai.api_key = st.secrets["openai"]["api_key"]
 
 # --- Audio / Speech packages ---
 from pydub import AudioSegment
@@ -443,11 +446,6 @@ else:
 # ============================================================
 # AI Enhancements (shared across Text→Audio and Audio→Text)
 # ============================================================
-
-import openai
-
-# Load API key securely from Streamlit secrets
-openai.api_key = st.secrets["openai"]["api_key"]
 
 def summarize_text(text):
     response = openai.ChatCompletion.create(
