@@ -2,7 +2,7 @@
 
 A free, open‑source Streamlit app that converts text ↔ audio and supports full book‑to‑audiobook conversion with chapter markers, progress tracking, and transcription.
 
-![Open in Streamlit](https://donfaruk19-smart-audiobook-app.streamlit.app)
+![Open in Streamlit](https://smartaudiobookconverter.streamlit.app)
 !Python
 !License
 
