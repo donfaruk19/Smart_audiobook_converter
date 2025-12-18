@@ -440,12 +440,92 @@ else:
             else:
                 st.error("No transcription result produced.")
 
-# ------------------------------------------------------------
-# AI-ready enhancements (placeholders for future integration)
-# ------------------------------------------------------------
+# ============================================================
+# AI Enhancements (shared across Text→Audio and Audio→Text)
+# ============================================================
+
+import openai
+
+# Load API key securely from Streamlit secrets
+openai.api_key = st.secrets["openai"]["api_key"]
+
+def summarize_text(text):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Summarize this text in 3 sentences."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message["content"]
+
+def translate_text(text, target_lang="French"):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"Translate this text into {target_lang}."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message["content"]
+
+def extract_keywords(text):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Extract 5 key topics from this text."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message["content"]
+
+def generate_chapter_titles(chunks):
+    """Generate smart titles for each chapter chunk using AI."""
+    titles = []
+    for i, chunk in enumerate(chunks, start=1):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "Give a short, creative chapter title."},
+                    {"role": "user", "content": chunk[:1000]}  # limit text for efficiency
+                ]
+            )
+            title = response.choices[0].message["content"]
+            titles.append(title)
+        except Exception as e:
+            titles.append(f"Chapter {i} (title failed: {e})")
+    return titles
+
+# --- Shared AI Enhancements UI ---
 st.divider()
-st.subheader("Enhancements")
-st.markdown(
-    "- Summary, translation, keyword extraction, and smart chapter titles can be added with an AI service.\n"
-    "  For privacy and reliability, integrate a server-side AI endpoint and call it from this app."
-        )
+st.subheader("✨ AI Enhancements")
+
+# Check if text exists from either mode
+if 'text' in locals() and text and text.strip():
+    if st.button("Summarize Text"):
+        summary = summarize_text(text)
+        st.markdown("**Summary:**")
+        st.write(summary)
+
+    target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
+    if st.button("Translate"):
+        translation = translate_text(text, target_lang)
+        st.markdown(f"**Translation ({target_lang}):**")
+        st.write(translation)
+
+    if st.button("Extract Keywords"):
+        keywords = extract_keywords(text)
+        st.markdown("**Keywords:**")
+        st.write(keywords)
+
+    # Smart chapter titles (only if text was chunked earlier)
+    if st.button("Generate Smart Chapter Titles"):
+        chunks = chunk_text(text, max_words=800)
+        titles = generate_chapter_titles(chunks)
+        st.markdown("**Smart Chapter Titles:**")
+        for i, title in enumerate(titles, start=1):
+            st.write(f"Chapter {i}: {title}")
+else:
+    st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
+
