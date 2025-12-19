@@ -259,7 +259,7 @@ def synthesize_chunk(chunk, engine_label, language, rate, volume, allow_neural):
 # ============================================================
 # UI
 # ============================================================
-st.title("📚 Donfaruk19 → Smart Audiobook Converter")
+st.title("📚 Smart Audiobook Converter")
 st.caption("Developed by Donfaruk19")
 
 # Top-level mode
@@ -491,8 +491,7 @@ def generate_chapter_titles(chunks):
                     {"role": "user", "content": chunk[:1000]}  # limit text for efficiency
                 ]
             )
-            title = response.choices[0].message.content
-            titles.append(title)
+            titles.append(response.choices[0].message.content)
         except Exception as e:
             titles.append(f"Chapter {i} (title failed: {e})")
     return titles
@@ -517,119 +516,31 @@ def generate_outline(text):
     )
     return response.choices[0].message.content
 
-def write_vtt_with_titles(durations, titles, outfile="chapters_ai.vtt"):
-    """Write WebVTT file with AI-generated chapter titles."""
-    start_ms = 0
-    lines = ["WEBVTT", ""]
-    for dur, title in zip(durations, titles):
-        end_ms = start_ms + dur
-        lines.append(f"{title}")
-        lines.append(f"{ms_to_vtt(start_ms)} --> {ms_to_vtt(end_ms)}")
-        lines.append("")
-        start_ms = end_ms
-    with open(outfile, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    return outfile
-
 # --- Shared AI Enhancements UI ---
 st.divider()
 st.subheader("✨ AI Enhancements")
 
 if 'text' in locals() and text and text.strip():
     if st.button("Summarize Text"):
-        st.write("**Summary:**", summarize_text(text))
+        st.markdown("**Summary:**")
+        st.write(summarize_text(text))
 
     target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
     if st.button("Translate"):
-        st.write(f"**Translation ({target_lang}):**", translate_text(text, target_lang))
+        st.markdown(f"**Translation ({target_lang}):**")
+        st.write(translate_text(text, target_lang))
 
     if st.button("Extract Keywords"):
-        st.write("**Keywords:**", extract_keywords(text))
+        st.markdown("**Keywords:**")
+        st.write(extract_keywords(text))
 
     if st.button("Sentiment Analysis"):
-        st.write("**Sentiment Analysis:**", sentiment_analysis(text))
+        st.markdown("**Sentiment Analysis:**")
+        st.write(sentiment_analysis(text))
 
     if st.button("Generate Outline"):
-        st.write("**Outline:**", generate_outline(text))
+        st.markdown("**Outline:**")
+        st.write(generate_outline(text))
 
 else:
     st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
-
-# ============================================================
-# Merge audio and apply AI chapter titles automatically
-# ============================================================
-
-if st.button("Merge Audiobook"):
-    if audio_chunks:
-        try:
-            # Merge audio chunks
-            merged = AudioSegment.empty()
-            durations = []
-            for chunk in audio_chunks:
-                audio = AudioSegment.from_file(chunk, format="mp3")
-                merged += audio
-                durations.append(len(audio))
-
-            merged_file = "audiobook.mp3"
-            merged.export(merged_file, format="mp3")
-
-            # --- AI Chapter Titles ---
-            chunks = chunk_text(text, max_words=800)
-            titles = generate_chapter_titles(chunks)
-
-            # Write WebVTT with AI titles
-            vtt_ai_path = write_vtt_with_titles(durations, titles, "chapters_ai.vtt")
-
-            # Save manifest JSON with AI titles + durations
-            manifest_file = "chapters_with_titles.json"
-            chapters = [{"index": i+1, "title": t, "duration_sec": d/1000} for i, (t, d) in enumerate(zip(titles, durations))]
-            with open(manifest_file, "w", encoding="utf-8") as f:
-                json.dump({"chapters": chapters}, f, indent=2)
-
-            # --- Download buttons ---
-            with open(merged_file, "rb") as f:
-                st.download_button("Download Audiobook (MP3)", f, file_name=merged_file)
-
-            with open(vtt_ai_path, "rb") as f:
-                st.download_button("Download AI Chapter Markers (WebVTT)", f, file_name="chapters_ai.vtt")
-
-            with open(manifest_file, "rb") as f:
-                st.download_button("Download Chapters Manifest with AI Titles (JSON)", f, file_name=manifest_file)
-
-            # --- Inline audio player ---
-            st.audio(merged_file, format="audio/mp3")
-            st.info("AI chapter markers are available in the WebVTT file for advanced players.")
-
-            # --- Styled chapter list ---
-            st.markdown("### 📚 Chapter List (AI Titles)")
-            st.table(chapters)
-
-            # --- Jump to Chapter buttons ---
-            st.markdown("### 🎯 Jump to Chapter")
-            start_ms = 0
-            chapter_boundaries = []
-            for i, (title, dur) in enumerate(zip(titles, durations), start=1):
-                end_ms = start_ms + dur
-                chapter_boundaries.append((i, title, start_ms, end_ms))
-                if st.button(f"Go to Chapter {i}: {title}"):
-                    st.write(f"⏩ Suggested start time: {start_ms/1000:.1f} seconds")
-                    st.info("Use this timestamp in your player to jump directly.")
-                start_ms = end_ms
-
-            # --- Now Playing indicator ---
-            st.markdown("### 🎵 Now Playing")
-            current_time = st.number_input("Enter current playback time (seconds)", min_value=0.0, step=1.0)
-            active_chapter = None
-            for i, title, start_ms, end_ms in chapter_boundaries:
-                if start_ms/1000 <= current_time < end_ms/1000:
-                    active_chapter = (i, title)
-                    break
-            if active_chapter:
-                st.success(f"▶ Currently playing: Chapter {active_chapter[0]} — {active_chapter[1]}")
-            else:
-                st.info("Playback time not within any chapter range.")
-
-            st.success("Audiobook merged successfully with AI chapter titles!")
-
-        except Exception as e:
-            st.error(f"Failed to merge audiobook: {e}")
