@@ -456,7 +456,7 @@ def summarize_text(text):
         return "OpenAI client not available."
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize this text in 3 sentences."},
                 {"role": "user", "content": text}
