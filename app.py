@@ -19,11 +19,8 @@ import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
-# Optional packages (we'll guard usage)
-# - pyttsx3 (Offline voice - basic)
-# - TTS (Coqui; Neural voice - advanced)
-# - python-docx (DOCX support)
-# - streamlit-webrtc (Recording)
+# Initialize audio_chunks as an empty list
+audio_chunks = []
 
 # ============================================================
 # Page config MUST be the first Streamlit command
@@ -332,6 +329,7 @@ if mode == "Text → Audio":
                             allow_neural=not CLOUD_MODE
                         )
                         audio_files.append(filename)
+                        audio_chunks.append(filename)
                     except Exception as e:
                         st.error(f"Conversion failed for chapter {i}: {e}")
                         # Skip failed chapter and continue
@@ -451,7 +449,7 @@ try:
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 except Exception as e:
     client = None
-    st.error("⚠️ OpenAI client could not be initialized. Check API.")
+    st.error("⚠️ OpenAI client could not be initialized.")
 
 def summarize_text(text):
     if client is None:
