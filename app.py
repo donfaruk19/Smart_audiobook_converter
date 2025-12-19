@@ -443,70 +443,36 @@ else:
 # ============================================================
 
 from openai import OpenAI
-import streamlit as st
 
 # Initialize OpenAI client once, using Streamlit secrets
 try:
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 except Exception as e:
     client = None
-    st.error("⚠️ OpenAI client could not be initialized.")
+    st.error("⚠️ OpenAI client could not be initialized. Check your API.")
 
-def summarize_text(text):
-    if client is None:
-        return "OpenAI client not available."
+# --- Connectivity check: list models if client works ---
+available_models = []
+if client:
     try:
-        response = client.responses.create(
-            model="gpt-4o-mini",   # safe default model
-            input=f"Summarize this text in 3 sentences:\n\n{text}"
-        )
-        return response.output[0].content[0].text
+        models = client.models.list()
+        available_models = [m.id for m in models.data if "gpt" in m.id]  # filter to GPT models
+        st.write("✅ OpenAI client initialized. models available:")
+        for m in available_models[:5]:
+            st.write("-", m)
     except Exception as e:
-        return f"❌ Error: {e}"
+        st.error(f"❌ Client initialized but API call failed: {e}")
+else:
+    st.error("❌ OpenAI client not initialized. Check API")
 
-def translate_text(text, target_lang="French"):
+# --- Helper function to call responses API safely ---
+def call_ai(model, prompt):
     if client is None:
         return "OpenAI client not available."
     try:
         response = client.responses.create(
-            model="gpt-4o-mini",
-            input=f"Translate this text into {target_lang}:\n\n{text}"
-        )
-        return response.output[0].content[0].text
-    except Exception as e:
-        return f"❌ Error: {e}"
-
-def extract_keywords(text):
-    if client is None:
-        return "OpenAI client not available."
-    try:
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=f"Extract 5 key topics from this text:\n\n{text}"
-        )
-        return response.output[0].content[0].text
-    except Exception as e:
-        return f"❌ Error: {e}"
-
-def sentiment_analysis(text):
-    if client is None:
-        return "OpenAI client not available."
-    try:
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=f"Analyze the sentiment of this text (positive, negative, neutral):\n\n{text}"
-        )
-        return response.output[0].content[0].text
-    except Exception as e:
-        return f"❌ Error: {e}"
-
-def generate_outline(text):
-    if client is None:
-        return "OpenAI client not available."
-    try:
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=f"Create a structured outline of this text with main points and subpoints:\n\n{text}"
+            model=model,
+            input=prompt
         )
         return response.output[0].content[0].text
     except Exception as e:
@@ -516,9 +482,15 @@ def generate_outline(text):
 st.divider()
 st.subheader("✨ AI Enhancements")
 
+# Let user choose which model to use (populate from API if available)
+if available_models:
+    selected_model = st.selectbox("Choose AI model", available_models, index=0)
+else:
+    selected_model = "gpt-4o-mini"  # fallback default
+
 if 'text' in locals() and text and text.strip():
     if st.button("Summarize Text"):
-        summary = summarize_text(text)
+        summary = call_ai(selected_model, f"Summarize this text in 3 sentences:\n\n{text}")
         if summary.startswith("❌") or summary.startswith("OpenAI"):
             st.error(summary)
         else:
@@ -527,7 +499,7 @@ if 'text' in locals() and text and text.strip():
 
     target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
     if st.button("Translate"):
-        translation = translate_text(text, target_lang)
+        translation = call_ai(selected_model, f"Translate this text into {target_lang}:\n\n{text}")
         if translation.startswith("❌") or translation.startswith("OpenAI"):
             st.error(translation)
         else:
@@ -535,7 +507,7 @@ if 'text' in locals() and text and text.strip():
             st.write(translation)
 
     if st.button("Extract Keywords"):
-        keywords = extract_keywords(text)
+        keywords = call_ai(selected_model, f"Extract 5 key topics from this text:\n\n{text}")
         if keywords.startswith("❌") or keywords.startswith("OpenAI"):
             st.error(keywords)
         else:
@@ -543,7 +515,7 @@ if 'text' in locals() and text and text.strip():
             st.write(keywords)
 
     if st.button("Sentiment Analysis"):
-        sentiment = sentiment_analysis(text)
+        sentiment = call_ai(selected_model, f"Analyze the sentiment of this text (positive, negative, neutral):\n\n{text}")
         if sentiment.startswith("❌") or sentiment.startswith("OpenAI"):
             st.error(sentiment)
         else:
@@ -551,7 +523,7 @@ if 'text' in locals() and text and text.strip():
             st.write(sentiment)
 
     if st.button("Generate Outline"):
-        outline = generate_outline(text)
+        outline = call_ai(selected_model, f"Create a structured outline of this text with main points and subpoints:\n\n{text}")
         if outline.startswith("❌") or outline.startswith("OpenAI"):
             st.error(outline)
         else:
@@ -560,6 +532,7 @@ if 'text' in locals() and text and text.strip():
 
 else:
     st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
+
 
 # ============================================================
 # Merge audio and apply AI chapter titles automatically
