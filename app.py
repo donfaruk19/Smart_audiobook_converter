@@ -443,57 +443,93 @@ else:
 # ============================================================
 # AI Enhancements (shared across Text→Audio and Audio→Text)
 # ============================================================
+
 import openai
 
-# Load API key securely from Streamlit secrets
-openai.api_key = st.secrets["openai"]["api_key"]
+# Create a client with your secure API key
+client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
+
 def summarize_text(text):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Summarize this text in 3 sentences."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 def translate_text(text, target_lang="French"):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": f"Translate this text into {target_lang}."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 def extract_keywords(text):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Extract 5 key topics from this text."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 def generate_chapter_titles(chunks):
     """Generate smart titles for each chapter chunk using AI."""
     titles = []
     for i, chunk in enumerate(chunks, start=1):
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": "Give a short, creative chapter title."},
                     {"role": "user", "content": chunk[:1000]}  # limit text for efficiency
                 ]
             )
-            title = response.choices[0].message["content"]
+            title = response.choices[0].message.content
             titles.append(title)
         except Exception as e:
             titles.append(f"Chapter {i} (title failed: {e})")
     return titles
+
+def sentiment_analysis(text):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Analyze the sentiment of this text (positive, negative, neutral)."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message.content
+
+def generate_outline(text):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "Create a structured outline of this text with main points and subpoints."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message.content
+
+def write_vtt_with_titles(durations, titles, outfile="chapters_ai.vtt"):
+    """Write WebVTT file with AI-generated chapter titles."""
+    start_ms = 0
+    lines = ["WEBVTT", ""]
+    for dur, title in zip(durations, titles):
+        end_ms = start_ms + dur
+        lines.append(f"{title}")
+        lines.append(f"{ms_to_vtt(start_ms)} --> {ms_to_vtt(end_ms)}")
+        lines.append("")
+        start_ms = end_ms
+    with open(outfile, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return outfile
 
 # --- Shared AI Enhancements UI ---
 st.divider()
@@ -517,13 +553,45 @@ if 'text' in locals() and text and text.strip():
         st.markdown("**Keywords:**")
         st.write(keywords)
 
-    # Smart chapter titles (only if text was chunked earlier)
+    if st.button("Sentiment Analysis"):
+        sentiment = sentiment_analysis(text)
+        st.markdown("**Sentiment Analysis:**")
+        st.write(sentiment)
+
+    if st.button("Generate Outline"):
+        outline = generate_outline(text)
+        st.markdown("**Outline:**")
+        st.write(outline)
+
     if st.button("Generate Smart Chapter Titles"):
         chunks = chunk_text(text, max_words=800)
         titles = generate_chapter_titles(chunks)
         st.markdown("**Smart Chapter Titles:**")
         for i, title in enumerate(titles, start=1):
             st.write(f"Chapter {i}: {title}")
+
+        # Save titles into chapters.json manifest
+        try:
+            manifest_file = "chapters_with_titles.json"
+            chapters = [{"index": i+1, "title": t} for i, t in enumerate(titles)]
+            with open(manifest_file, "w", encoding="utf-8") as f:
+                json.dump({"chapters": chapters}, f, indent=2)
+            with open(manifest_file, "rb") as f:
+                st.download_button("Download chapters manifest with AI titles (JSON)", f, file_name=manifest_file)
+        except Exception as e:
+            st.error(f"Failed to save AI chapter titles: {e}")
+
+        # If durations exist (from audiobook merge), create AI WebVTT
+        if 'durations' in locals() and durations:
+            try:
+                vtt_ai_path = write_vtt_with_titles(durations, titles, "chapters_ai.vtt")
+                with open(vtt_ai_path, "rb") as f:
+                    st.download_button("Download AI chapter markers (WebVTT)", f, file_name="chapters_ai.vtt")
+                # Display chapter list inline
+                st.markdown("**Chapter List (AI Titles):**")
+                for i, (title, dur) in enumerate(zip(titles, durations), start=1):
+                    st.write(f"Chapter {i} ({dur/1000:.1f} sec): {title}")
+            except Exception as e:
+                st.error(f"Failed to generate AI WebVTT: {e}")
 else:
     st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
-
