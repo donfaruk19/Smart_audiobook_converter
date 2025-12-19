@@ -444,77 +444,113 @@ else:
 # AI Enhancements (shared across Text→Audio and Audio→Text)
 # ============================================================
 
-import openai
+from openai import OpenAI
 
 # Securely load API key from Streamlit secrets
-openai.api_key = st.secrets["openai"]["api_key"]
+try:
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+except Exception as e:
+    client = None
+    st.error("⚠️ OpenAI client could not be initialized. Check your API key in Streamlit secrets.")
+
+def safe_call(func, *args, **kwargs):
+    """Wrapper to safely call AI functions and handle errors."""
+    if client is None:
+        return "OpenAI client not available."
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        return f"❌ Error: {e}"
 
 def summarize_text(text):
-    response = openai.chat.completions.create(
+    result = safe_call(
+        client.chat.completions.create,
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Summarize this text in 3 sentences."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message.content
+    return result.choices[0].message.content if hasattr(result, "choices") else result
 
 def translate_text(text, target_lang="French"):
-    response = openai.chat.completions.create(
+    result = safe_call(
+        client.chat.completions.create,
         model="gpt-4",
         messages=[
             {"role": "system", "content": f"Translate this text into {target_lang}."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message.content
+    return result.choices[0].message.content if hasattr(result, "choices") else result
 
 def extract_keywords(text):
-    response = openai.chat.completions.create(
+    result = safe_call(
+        client.chat.completions.create,
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Extract 5 key topics from this text."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message.content
+    return result.choices[0].message.content if hasattr(result, "choices") else result
 
 def generate_chapter_titles(chunks):
-    """Generate smart titles for each chapter chunk using AI."""
     titles = []
     for i, chunk in enumerate(chunks, start=1):
-        try:
-            response = openai.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Give a short, creative chapter title."},
-                    {"role": "user", "content": chunk[:1000]}  # limit text for efficiency
-                ]
-            )
-            titles.append(response.choices[0].message.content)
-        except Exception as e:
-            titles.append(f"Chapter {i} (title failed: {e})")
+        result = safe_call(
+            client.chat.completions.create,
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Give a short, creative chapter title."},
+                {"role": "user", "content": chunk[:1000]}
+            ]
+        )
+        if hasattr(result, "choices"):
+            titles.append(result.choices[0].message.content)
+        else:
+            titles.append(f"Chapter {i} (error: {result})")
     return titles
 
 def sentiment_analysis(text):
-    response = openai.chat.completions.create(
+    result = safe_call(
+        client.chat.completions.create,
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Analyze the sentiment of this text (positive, negative, neutral)."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message.content
+    return result.choices[0].message.content if hasattr(result, "choices") else result
 
 def generate_outline(text):
-    response = openai.chat.completions.create(
+    result = safe_call(
+        client.chat.completions.create,
         model="gpt-4",
         messages=[
             {"role": "system", "content": "Create a structured outline of this text with main points and subpoints."},
             {"role": "user", "content": text}
         ]
     )
-    return response.choices[0].message.content
+    return result.choices[0].message.content if hasattr(result, "choices") else result
+
+def write_vtt_with_titles(durations, titles, outfile="chapters_ai.vtt"):
+    """Write WebVTT file with AI-generated chapter titles."""
+    try:
+        start_ms = 0
+        lines = ["WEBVTT", ""]
+        for dur, title in zip(durations, titles):
+            end_ms = start_ms + dur
+            lines.append(f"{title}")
+            lines.append(f"{ms_to_vtt(start_ms)} --> {ms_to_vtt(end_ms)}")
+            lines.append("")
+            start_ms = end_ms
+        with open(outfile, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return outfile
+    except Exception as e:
+        st.error(f"❌ Failed to write VTT: {e}")
+        return None
 
 # --- Shared AI Enhancements UI ---
 st.divider()
@@ -544,3 +580,91 @@ if 'text' in locals() and text and text.strip():
 
 else:
     st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
+
+# ============================================================
+# Merge audio and apply AI chapter titles automatically
+# ============================================================
+
+if st.button("Merge Audiobook"):
+    if audio_chunks:
+        try:
+            # Merge audio chunks safely
+            merged = AudioSegment.empty()
+            durations = []
+            for chunk in audio_chunks:
+                try:
+                    audio = AudioSegment.from_file(chunk, format="mp3")
+                    merged += audio
+                    durations.append(len(audio))
+                except Exception as e:
+                    st.error(f"❌ Failed to process chunk {chunk}: {e}")
+
+            if not durations:
+                st.error("⚠️ No valid audio chunks to merge.")
+            else:
+                merged_file = "audiobook.mp3"
+                try:
+                    merged.export(merged_file, format="mp3")
+                except Exception as e:
+                    st.error(f"❌ Failed to export merged audio: {e}")
+                    merged_file = None
+
+                # --- AI Chapter Titles ---
+                chunks = chunk_text(text, max_words=800)
+                titles = generate_chapter_titles(chunks)
+
+                # Write WebVTT with AI titles
+                vtt_ai_path = write_vtt_with_titles(durations, titles, "chapters_ai.vtt")
+
+                # Save manifest JSON with AI titles + durations
+                manifest_file = "chapters_with_titles.json"
+                try:
+                    chapters = [{"index": i+1, "title": t, "duration_sec": d/1000} for i, (t, d) in enumerate(zip(titles, durations))]
+                    with open(manifest_file, "w", encoding="utf-8") as f:
+                        json.dump({"chapters": chapters}, f, indent=2)
+                except Exception as e:
+                    st.error(f"❌ Failed to save manifest: {e}")
+                    manifest_file = None
+
+                # --- Download buttons ---
+                if merged_file:
+                    with open(merged_file, "rb") as f:
+                        st.download_button("Download Audiobook (MP3)", f, file_name=merged_file)
+
+                if vtt_ai_path:
+                    with open(vtt_ai_path, "rb") as f:
+                        st.download_button("Download AI Chapter Markers (WebVTT)", f, file_name="chapters_ai.vtt")
+
+                if manifest_file:
+                    with open(manifest_file, "rb") as f:
+                        st.download_button("Download Chapters Manifest with AI Titles (JSON)", f, file_name=manifest_file)
+
+                # --- Inline audio player ---
+                if merged_file:
+                    st.audio(merged_file, format="audio/mp3")
+                    st.info("AI chapter markers are available in the WebVTT file for advanced players.")
+
+                # --- Styled chapter list ---
+                st.markdown("### 📚 Chapter List (AI Titles)")
+                if manifest_file and chapters:
+                    st.table(chapters)
+
+                # --- Jump to Chapter buttons ---
+                st.markdown("### 🎯 Jump to Chapter")
+                start_ms = 0
+                chapter_boundaries = []
+                for i, (title, dur) in enumerate(zip(titles, durations), start=1):
+                    end_ms = start_ms + dur
+                    chapter_boundaries.append((i, title, start_ms, end_ms))
+                    if st.button(f"Go to Chapter {i}: {title}"):
+                        st.write(f"⏩ Suggested start time: {start_ms/1000:.1f} seconds")
+                        st.info("Use this timestamp in your player to jump directly.")
+                    start_ms = end_ms
+
+                # --- Now Playing indicator ---
+                st.markdown("### 🎵 Now Playing")
+                current_time = st.number_input("Enter current playback time (seconds)", min_value=0.0, step=1.0)
+                active_chapter = None
+                for i, title, start_ms, end_ms in chapter_boundaries:
+                    if start_ms/1000 <= current_time < end_ms/1000:
+                        active_chapter = (i, title)
