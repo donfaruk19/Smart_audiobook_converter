@@ -443,6 +443,7 @@ else:
 # ============================================================
 
 from openai import OpenAI
+import streamlit as st
 
 # Initialize OpenAI client once, using Streamlit secrets
 try:
@@ -455,14 +456,11 @@ def summarize_text(text):
     if client is None:
         return "OpenAI client not available."
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Summarize this text in 3 sentences."},
-                {"role": "user", "content": text}
-            ]
+        response = client.responses.create(
+            model="gpt-4o-mini",   # safe default model
+            input=f"Summarize this text in 3 sentences:\n\n{text}"
         )
-        return response.choices[0].message.content
+        return response.output[0].content[0].text
     except Exception as e:
         return f"❌ Error: {e}"
 
@@ -470,14 +468,11 @@ def translate_text(text, target_lang="French"):
     if client is None:
         return "OpenAI client not available."
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": f"Translate this text into {target_lang}."},
-                {"role": "user", "content": text}
-            ]
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=f"Translate this text into {target_lang}:\n\n{text}"
         )
-        return response.choices[0].message.content
+        return response.output[0].content[0].text
     except Exception as e:
         return f"❌ Error: {e}"
 
@@ -485,47 +480,23 @@ def extract_keywords(text):
     if client is None:
         return "OpenAI client not available."
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Extract 5 key topics from this text."},
-                {"role": "user", "content": text}
-            ]
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=f"Extract 5 key topics from this text:\n\n{text}"
         )
-        return response.choices[0].message.content
+        return response.output[0].content[0].text
     except Exception as e:
         return f"❌ Error: {e}"
-
-def generate_chapter_titles(chunks):
-    titles = []
-    if client is None:
-        return ["OpenAI client not available."]
-    for i, chunk in enumerate(chunks, start=1):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Give a short, creative chapter title."},
-                    {"role": "user", "content": chunk[:1000]}
-                ]
-            )
-            titles.append(response.choices[0].message.content)
-        except Exception as e:
-            titles.append(f"Chapter {i} (error: {e})")
-    return titles
 
 def sentiment_analysis(text):
     if client is None:
         return "OpenAI client not available."
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Analyze the sentiment of this text (positive, negative, neutral)."},
-                {"role": "user", "content": text}
-            ]
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=f"Analyze the sentiment of this text (positive, negative, neutral):\n\n{text}"
         )
-        return response.choices[0].message.content
+        return response.output[0].content[0].text
     except Exception as e:
         return f"❌ Error: {e}"
 
@@ -533,33 +504,13 @@ def generate_outline(text):
     if client is None:
         return "OpenAI client not available."
     try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Create a structured outline of this text with main points and subpoints."},
-                {"role": "user", "content": text}
-            ]
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=f"Create a structured outline of this text with main points and subpoints:\n\n{text}"
         )
-        return response.choices[0].message.content
+        return response.output[0].content[0].text
     except Exception as e:
         return f"❌ Error: {e}"
-
-def write_vtt_with_titles(durations, titles, outfile="chapters_ai.vtt"):
-    try:
-        start_ms = 0
-        lines = ["WEBVTT", ""]
-        for dur, title in zip(durations, titles):
-            end_ms = start_ms + dur
-            lines.append(f"{title}")
-            lines.append(f"{ms_to_vtt(start_ms)} --> {ms_to_vtt(end_ms)}")
-            lines.append("")
-            start_ms = end_ms
-        with open(outfile, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-        return outfile
-    except Exception as e:
-        st.error(f"❌ Failed to write VTT: {e}")
-        return None
 
 # --- Shared AI Enhancements UI ---
 st.divider()
@@ -567,25 +518,45 @@ st.subheader("✨ AI Enhancements")
 
 if 'text' in locals() and text and text.strip():
     if st.button("Summarize Text"):
-        st.markdown("**Summary:**")
-        st.write(summarize_text(text))
+        summary = summarize_text(text)
+        if summary.startswith("❌") or summary.startswith("OpenAI"):
+            st.error(summary)
+        else:
+            st.markdown("**Summary:**")
+            st.write(summary)
 
     target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
     if st.button("Translate"):
-        st.markdown(f"**Translation ({target_lang}):**")
-        st.write(translate_text(text, target_lang))
+        translation = translate_text(text, target_lang)
+        if translation.startswith("❌") or translation.startswith("OpenAI"):
+            st.error(translation)
+        else:
+            st.markdown(f"**Translation ({target_lang}):**")
+            st.write(translation)
 
     if st.button("Extract Keywords"):
-        st.markdown("**Keywords:**")
-        st.write(extract_keywords(text))
+        keywords = extract_keywords(text)
+        if keywords.startswith("❌") or keywords.startswith("OpenAI"):
+            st.error(keywords)
+        else:
+            st.markdown("**Keywords:**")
+            st.write(keywords)
 
     if st.button("Sentiment Analysis"):
-        st.markdown("**Sentiment Analysis:**")
-        st.write(sentiment_analysis(text))
+        sentiment = sentiment_analysis(text)
+        if sentiment.startswith("❌") or sentiment.startswith("OpenAI"):
+            st.error(sentiment)
+        else:
+            st.markdown("**Sentiment Analysis:**")
+            st.write(sentiment)
 
     if st.button("Generate Outline"):
-        st.markdown("**Outline:**")
-        st.write(generate_outline(text))
+        outline = generate_outline(text)
+        if outline.startswith("❌") or outline.startswith("OpenAI"):
+            st.error(outline)
+        else:
+            st.markdown("**Outline:**")
+            st.write(outline)
 
 else:
     st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
