@@ -16,11 +16,16 @@ from ebooklib import epub
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
-# Set environment variable from secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
-# Initialize client (no need to pass api_key explicitly)
-client = OpenAI()
+# Quick test
+try:
+    models = client.models.list()
+    st.success("✅ Client initialized. First few models:")
+    for m in models.data[:5]:
+        st.write("-", m.id)
+except Exception as e:
+    st.error(f"❌ API call failed: {e}")
 
 # Initialize audio_chunks as an empty list
 audio_chunks = []
@@ -444,16 +449,6 @@ else:
 # ============================================================
 # AI Enhancements (shared across Text→Audio and Audio→Text)
 # ============================================================
-
-# Quick connectivity check
-try:
-    models = client.models.list()
-    st.success("✅ OpenAI client initialized successfully.")
-    st.write("models available:")
-    for m in models.data[:5]:
-        st.write("-", m.id)
-except Exception as e:
-    st.error(f"❌ Client initialized but API call failed: {e}")
     
 # --- Connectivity check: list models if client works ---
 available_models = []
