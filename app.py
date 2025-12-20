@@ -4,20 +4,23 @@ import time
 import json
 import tempfile
 import streamlit as st
-
-
 # --- Audio / Speech packages ---
 from pydub import AudioSegment
 import speech_recognition as sr
-
 # --- TTS engines (loaded lazily inside functions where useful) ---
 from gtts import gTTS  # Online voice (fast)
-
 # --- Document packages ---
 from PyPDF2 import PdfReader
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
+from openai import OpenAI
+
+# Set environment variable from secrets
+os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
+
+# Initialize client (no need to pass api_key explicitly)
+client = OpenAI()
 
 # Initialize audio_chunks as an empty list
 audio_chunks = []
@@ -441,11 +444,6 @@ else:
 # ============================================================
 # AI Enhancements (shared across Text→Audio and Audio→Text)
 # ============================================================
-
-from openai import OpenAI
-
-# Initialize OpenAI client once, using Streamlit secrets
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 # Quick connectivity check
 try:
