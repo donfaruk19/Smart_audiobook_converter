@@ -26,7 +26,7 @@ audio_chunks = []
 # Page config MUST be the first Streamlit command
 # ============================================================
 st.set_page_config(page_title="Donfaruk19 → Smart Audiobook Converter", layout="centered")
-
+st.write("Secrets:", st.secrets)
 # ============================================================
 # Environment detection
 # ============================================================
@@ -447,6 +447,7 @@ from openai import OpenAI
 # Initialize OpenAI client once, using Streamlit secrets
 try:
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    st.write("✅ Client initialized")
 except Exception as e:
     client = None
     st.error("⚠️ OpenAI client could not be initialized. Check your API.")
