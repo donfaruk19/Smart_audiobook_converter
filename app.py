@@ -1,5 +1,27 @@
 import os
 import sys
+import subprocess
+
+def ensure_local_env():
+    """Auto-create venv and install dependencies for local use."""
+    # Skip if running on Streamlit Cloud
+    if "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ:
+        return
+
+    # Create venv if not exists
+    if not os.path.exists("venv"):
+        subprocess.run([sys.executable, "-m", "venv", "venv"])
+        print("✅ Virtual environment created.")
+
+    # Install from requirements-local.txt if available
+    if os.path.exists("requirements-local.txt"):
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements-local.txt"])
+        print("✅ Local dependencies installed from requirements-local.txt.")
+
+# Run setup immediately
+ensure_local_env()
+
+# --- other import of libraries ---
 import time
 import json
 import tempfile
