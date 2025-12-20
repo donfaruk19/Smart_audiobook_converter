@@ -19,8 +19,9 @@ from openai import OpenAI
 # Set environment variable from secrets
 os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
 
-# Initialize client (no need to pass api_key explicitly)
-client = OpenAI(apikey=st.secrets["openai"]["apikey"]) 
+# Initialize client (no need to pass api_key explicitly
+
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 # Quick test
 try:
