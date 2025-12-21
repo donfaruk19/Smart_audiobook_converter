@@ -62,8 +62,10 @@ def ensure_local_env():
         print("🔄 Restarting inside virtual environment...")
         os.execv(python_in_venv, [python_in_venv] + sys.argv)
 
-ensure_local_env()
-
+if not CLOUD_MODE:
+    ensure_local_env()
+else:
+    print("☁️ Cloud mode detected — skipping ensure_local_env()")
 
 # --- other imports ---
 import time
