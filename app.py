@@ -3,44 +3,6 @@ import os
 import shutil
 import subprocess
 
-def restart_with_python311():
-    py311 = shutil.which("python3.11")
-    if py311:
-        print("🔧 Using Python 3.11 for full feature support...")
-        os.execv(py311, [py311, "app.py", "--skip-launcher"])
-    else:
-        print("⚠️ Python 3.11 not found. Trying to install...")
-
-        # Try pyenv first
-        if shutil.which("pyenv"):
-            try:
-                subprocess.run(["pyenv", "install", "-s", "3.11.9"], check=True)
-                subprocess.run(["pyenv", "local", "3.11.9"], check=True)
-                py311 = shutil.which("python3.11")
-                if py311:
-                    os.execv(py311, [py311, "app.py", "--skip-launcher"])
-            except Exception as e:
-                print(f"⚠️ pyenv install failed: {e}")
-
-        # Try apt + deadsnakes PPA
-        if shutil.which("apt"):
-            try:
-                subprocess.run(["sudo", "add-apt-repository", "-y", "ppa:deadsnakes/ppa"], check=True)
-                subprocess.run(["sudo", "apt", "update"], check=True)
-                subprocess.run(["sudo", "apt", "install", "-y", "python3.11", "python3.11-venv", "python3.11-dev"], check=True)
-                py311 = shutil.which("python3.11")
-                if py311:
-                    os.execv(py311, [py311, "app.py", "--skip-launcher"])
-            except Exception as e:
-                print(f"⚠️ apt install failed: {e}")
-
-        print("⚠️ Could not install Python 3.11 automatically. Running with system python3 (fallback mode).")
-
-# Prevent infinite loop
-if "--skip-launcher" not in sys.argv:
-    if not sys.version.startswith("3.11"):
-        restart_with_python311()
-        
 # ============================================================
 # Environment detection
 # ============================================================
@@ -49,6 +11,24 @@ def running_on_streamlit_cloud():
 
 CLOUD_MODE = running_on_streamlit_cloud()
 
+# ============================================================
+# Local Python version bootstrap (skip on cloud)
+# ============================================================
+def restart_with_python311():
+    py311 = shutil.which("python3.11")
+    if py311:
+        print("🔧 Using Python 3.11 for full feature support...")
+        os.execv(py311, [py311, "app.py", "--skip-launcher"])
+    else:
+        print("⚠️ Python 3.11 not found. Running with system python3 (fallback mode).")
+
+if not CLOUD_MODE and "--skip-launcher" not in sys.argv:
+    if not sys.version.startswith("3.11"):
+        restart_with_python311()
+
+# ============================================================
+# Local environment setup (skip on cloud)
+# ============================================================
 def ensure_local_env():
     """Auto-create venv, install deps, and re-run inside venv if needed."""
     if CLOUD_MODE:
@@ -58,27 +38,26 @@ def ensure_local_env():
     venv_path = os.path.join(os.getcwd(), "venv")
     python_in_venv = os.path.join(venv_path, "bin", "python")
 
+    # Step 1: Create venv if missing
     if not os.path.exists(venv_path):
         subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
         print("✅ Virtual environment created.")
 
-    # Step 2: Build dependency list dynamically
+    # Step 2: Install local dependencies
     deps_file = "requirements-local.txt"
     if os.path.exists(deps_file):
-        # Read all deps
         with open(deps_file) as f:
             deps = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
-        # Skip TTS if Python >= 3.12
+        # Skip Coqui TTS if Python >= 3.12
         if sys.version_info >= (3, 12):
-            deps = [d for d in deps if not d.lower().startswith("tts")]
+            deps = [d for d in deps if not d.lower().startswith("coqui-tts")]
             print("⚠️ Skipping Coqui TTS (not supported on Python 3.12+)")
 
-        # Install deps
         subprocess.run([python_in_venv, "-m", "pip", "install"] + deps, check=True)
         print("✅ Local dependencies installed.")
 
-    # Step 3: Restart inside venv only if not already there
+    # Step 3: Restart inside venv if not already there
     if sys.executable != python_in_venv:
         print("🔄 Restarting inside virtual environment...")
         os.execv(python_in_venv, [python_in_venv] + sys.argv)
