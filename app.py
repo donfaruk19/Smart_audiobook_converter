@@ -40,16 +40,24 @@ def restart_with_python311():
 if "--skip-launcher" not in sys.argv:
     if not sys.version.startswith("3.11"):
         restart_with_python311()
+        
+# ============================================================
+# Environment detection
+# ============================================================
+def running_on_streamlit_cloud():
+    return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
+
+CLOUD_MODE = running_on_streamlit_cloud()
 
 def ensure_local_env():
     """Auto-create venv, install deps, and re-run inside venv if needed."""
-    if "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ:
+    if CLOUD_MODE:
+        print("☁️ Cloud mode detected — skipping local venv setup.")
         return
 
     venv_path = os.path.join(os.getcwd(), "venv")
     python_in_venv = os.path.join(venv_path, "bin", "python")
 
-    # Step 1: Create venv if missing
     if not os.path.exists(venv_path):
         subprocess.run([sys.executable, "-m", "venv", "venv"], check=True)
         print("✅ Virtual environment created.")
@@ -78,8 +86,6 @@ def ensure_local_env():
 ensure_local_env()
 
 
-
-
 # --- other imports ---
 import time
 import json
@@ -105,13 +111,6 @@ audio_chunks = []
 # ============================================================
 st.set_page_config(page_title="Donfaruk19 → Smart Audiobook Converter", layout="centered")
 
-# ============================================================
-# Environment detection
-# ============================================================
-def running_on_streamlit_cloud():
-    return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
-
-CLOUD_MODE = running_on_streamlit_cloud()
 
 # ============================================================
 # Helpers
