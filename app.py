@@ -11,6 +11,10 @@ def running_on_streamlit_cloud():
 
 CLOUD_MODE = running_on_streamlit_cloud()
 
+# 🔎 Debug print to verify detection
+print("🔎 Debug: Environment variables available →", list(os.environ.keys())[:20])
+print("🔎 Debug: CLOUD_MODE =", CLOUD_MODE)
+
 # ============================================================
 # Local Python version bootstrap (skip on cloud)
 # ============================================================
