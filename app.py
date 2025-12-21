@@ -7,13 +7,15 @@ import subprocess
 # Environment detection
 # ============================================================
 def running_on_streamlit_cloud():
-    return "STREAMLIT_SERVER_ENABLED" in os.environ or "STREAMLIT_CLOUD" in os.environ
+    keys = os.environ.keys()
+    return (
+        "STREAMLIT_SERVER_RUN_ON_SAVE" in keys
+        or "STREAMLIT_RUNNER_FAST_RERUNS" in keys
+        or "SF_PARTNER" in keys
+    )
 
 CLOUD_MODE = running_on_streamlit_cloud()
-
-# 🔎 Debug print to verify detection
-print("🔎 Debug: Environment variables available →", list(os.environ.keys())[:20])
-print("🔎 Debug: CLOUD_MODE =", CLOUD_MODE)
+print("🔎 CLOUD_MODE =", CLOUD_MODE)
 
 # ============================================================
 # Local Python version bootstrap (skip on cloud)
@@ -34,7 +36,6 @@ if not CLOUD_MODE and "--skip-launcher" not in sys.argv:
 # Local environment setup (skip on cloud)
 # ============================================================
 def ensure_local_env():
-    """Auto-create venv, install deps, and re-run inside venv if needed."""
     if CLOUD_MODE:
         print("☁️ Cloud mode detected — skipping local venv setup.")
         return
