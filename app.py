@@ -515,7 +515,7 @@ else:
                 st.error("No transcription result produced.")
 
 # = = [{"index": i+1, "title": t, "duration_sec": d/1000} 
-                                for i, (t, d) in enumerate(zip(titles, durations))]
+                    for i, (t, d) in enumerate(zip(titles, durations))]
                     with open(manifest_file, "w", encoding="utf-8") as f:
                         json.dump({"chapters": chapters}, f, indent=2)
                 except Exception as e:
