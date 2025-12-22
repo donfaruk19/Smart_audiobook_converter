@@ -458,19 +458,24 @@ if mode == "Text → Audio":
                         except Exception as e:
                             st.error(f"Failed to render/download {file}: {e}")
 
-# ------------------------------------------------------------
+# ============================================================
 # AUDIO → TEXT
-# ------------------------------------------------------------
+# ============================================================
 else:
-    # Recording support (if streamlit-webrtc is available)
-    st.subheader("Record or upload audio for transcription")
+    st.subheader("🎙️ Record or upload audio for transcription")
 
+    # Ensure a place to store text globally
+    if "text" not in st.session_state:
+        st.session_state["text"] = ""
+
+    # --- Recording support (optional, requires streamlit-webrtc locally) ---
     can_record = False
     try:
         from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
         can_record = True
     except Exception:
-        st.info("Recording is available locally with streamlit-webrtc. Add it to requirements to enable in cloud.")
+        st.info("Recording is available locally with streamlit-webrtc. "
+                "Add 'streamlit-webrtc' to requirements-local.txt to enable recording in local dev.")
 
     if can_record:
         class AudioCollector(AudioProcessorBase):
@@ -482,61 +487,48 @@ else:
                 self.samples.append(frame.to_ndarray())
                 return frame
 
-        st.write("Use the Start button below to record. Stop to finalize, then download and upload for transcription.")
-        webrtc_ctx = webrtc_streamer(key="speech_capture", audio_processor_factory=AudioCollector)
-        # For simplicity, we provide guidance rather than automatic saving of raw frames.
+        st.write("Use Start to record. Stop to finalize, then download and upload for transcription.")
+        webrtcctx = webrtc_streamer(
+            key="speechcapture",
+            audioprocessor_factory=AudioCollector
+        )
+        # Note: This demo collects frames but does not automatically save them.
 
+    # --- Upload audio file ---
     uploaded_audio = st.file_uploader(
         "Upload audio file",
         type=["wav", "mp3", "ogg", "flac", "m4a"],
         key="audio_uploader"
     )
 
+    # --- Choose recognition engine ---
     engine_stt = st.radio(
         "Recognition engine",
         ["Cloud speech (free)", "Offline speech (experimental)"],
         key="stt_radio"
     )
 
-    if uploaded_audio and st.button("📝 Convert to text", key="convert_text_button"):
-        path = save_uploaded_audio(uploaded_audio)
+    # --- Convert uploaded audio to text ---
+    if uploaded_audio and st.button("📝 Convert to text", key="converttext_button"):
+        path = save_uploaded_audio(uploaded_audio)   # uses your helper
         if path:
-            text = transcribe_file(path, engine_stt)
-            if text and text.strip():
+            transcript = transcribe_file(path, engine_stt)  # uses your helper
+            if transcript and transcript.strip():
+                # Store transcript to session and show result
+                st.session_state["text"] = transcript
                 st.success("✅ Transcription complete")
-                st.text_area("Transcribed text", text, height=250, key="transcribed_text")
+                st.text_area("Transcribed text (now available to AI Enhancements)", transcript, height=250, key="transcribedtext")
                 st.download_button(
                     "Download transcription (TXT)",
-                    text,
+                    transcript,
                     file_name="transcription.txt",
                     key="download_transcription"
                 )
+                st.info("You can now use the AI Enhancements dropdown to summarize, translate, etc.")
             else:
                 st.error("No transcription result produced.")
-
-# = = [{"index": i+1, "title": t, "duration_sec": d/1000} 
-                    for i, (t, d) in enumerate(zip(titles, durations))]
-                    with open(manifest_file, "w", encoding="utf-8") as f:
-                        json.dump({"chapters": chapters}, f, indent=2)
-                except Exception as e:
-                    st.error(f"❌ Failed to save manifest: {e}")
-                    manifest_file = None
-
-                # --- Downloads ---
-                if merged_file:
-                    with open(merged_file, "rb") as f:
-                        st.download_button("Download Audiobook (MP3)", f, file_name=merged_file)
-                if vtt_ai_path:
-                    with open(vtt_ai_path, "rb") as f:
-                        st.download_button("Download AI Chapter Markers (WebVTT)", f, file_name="chapters_ai.vtt")
-                if manifest_file:
-                    with open(manifest_file, "rb") as f:
-                        st.download_button("Download Chapters Manifest with AI Titles (JSON)", f, file_name=manifest_file)
-
-                # --- Inline audio player ---
-                if merged_file:
-                    st.audio(merged_file, format="audio/mp3")
-                    st.info("AI chapter markers are available in the WebVTT file for advanced players.")
+        else:
+            st.error("Failed to save the uploaded audio. Please try again.")
 
 
 HF_API_KEY = st.secrets["huggingface"]["api_key"]
