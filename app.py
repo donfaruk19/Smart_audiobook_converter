@@ -87,7 +87,6 @@ from PyPDF2 import PdfReader
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
-from openai import OpenAI
     
 # Initialize audio_chunks as an empty list
 audio_chunks = []
@@ -446,7 +445,7 @@ if mode == "Text → Audio":
                         except Exception as e:
                             st.error(f"Failed to merge chapters: {e}")
 
-                    st.markdown("### Individual chapter files")
+                    st.markdown("Individual chapter files")
                     for idx, file in enumerate(audio_files):
                         try:
                             st.audio(file)
@@ -515,135 +514,7 @@ else:
             else:
                 st.error("No transcription result produced.")
 
-# ============================================================
-# AI Enhancements (shared across Text→Audio and Audio→Text)
-# ============================================================
-
-# inialize client (no need to pass api_key explicitly
-
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-    
-# --- Connectivity check: list models if client works ---
-available_models = []
-if client:
-    try:
-        models = client.models.list()
-        available_models = [m.id for m in models.data if "gpt" in m.id]  # filter to GPT models
-        st.write("✅ OpenAI client initialized. models available:")
-        for m in available_models[:5]:
-            st.write("-", m)
-    except Exception as e:
-        st.error(f"❌ Client initialized but API call failed: {e}")
-else:
-    st.error("❌ OpenAI client not initialized. Check API")
-
-# --- Helper function to call responses API safely ---
-def call_ai(model, prompt):
-    if client is None:
-        return "OpenAI client not available."
-    try:
-        response = client.responses.create(
-            model=model,
-            input=prompt
-        )
-        return response.output[0].content[0].text
-    except Exception as e:
-        return f"❌ Error: {e}"
-
-# --- Shared AI Enhancements UI ---
-st.divider()
-st.subheader("✨ AI Enhancements")
-
-# Let user choose which model to use (populate from API if available)
-if available_models:
-    selected_model = st.selectbox("Choose AI model", available_models, index=0)
-else:
-    selected_model = "gpt-4o-mini"  # fallback default
-
-if 'text' in locals() and text and text.strip():
-    if st.button("Summarize Text"):
-        summary = call_ai(selected_model, f"Summarize this text in 3 sentences:\n\n{text}")
-        if summary.startswith("❌") or summary.startswith("OpenAI"):
-            st.error(summary)
-        else:
-            st.markdown("**Summary:**")
-            st.write(summary)
-
-    target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
-    if st.button("Translate"):
-        translation = call_ai(selected_model, f"Translate this text into {target_lang}:\n\n{text}")
-        if translation.startswith("❌") or translation.startswith("OpenAI"):
-            st.error(translation)
-        else:
-            st.markdown(f"**Translation ({target_lang}):**")
-            st.write(translation)
-
-    if st.button("Extract Keywords"):
-        keywords = call_ai(selected_model, f"Extract 5 key topics from this text:\n\n{text}")
-        if keywords.startswith("❌") or keywords.startswith("OpenAI"):
-            st.error(keywords)
-        else:
-            st.markdown("**Keywords:**")
-            st.write(keywords)
-
-    if st.button("Sentiment Analysis"):
-        sentiment = call_ai(selected_model, f"Analyze the sentiment of this text (positive, negative, neutral):\n\n{text}")
-        if sentiment.startswith("❌") or sentiment.startswith("OpenAI"):
-            st.error(sentiment)
-        else:
-            st.markdown("**Sentiment Analysis:**")
-            st.write(sentiment)
-
-    if st.button("Generate Outline"):
-        outline = call_ai(selected_model, f"Create a structured outline of this text with main points and subpoints:\n\n{text}")
-        if outline.startswith("❌") or outline.startswith("OpenAI"):
-            st.error(outline)
-        else:
-            st.markdown("**Outline:**")
-            st.write(outline)
-
-else:
-    st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
-
-
-# ============================================================
-# Merge audio and apply AI chapter titles automatically
-# ============================================================
-
-if st.button("Merge Audiobook"):
-    if audio_chunks:
-        try:
-            merged = AudioSegment.empty()
-            durations = []
-            for chunk in audio_chunks:
-                try:
-                    audio = AudioSegment.from_file(chunk, format="mp3")
-                    merged += audio
-                    durations.append(len(audio))
-                except Exception as e:
-                    st.error(f"❌ Failed to process chunk {chunk}: {e}")
-
-            if not durations:
-                st.error("⚠️ No valid audio chunks to merge.")
-            else:
-                merged_file = "audiobook.mp3"
-                try:
-                    merged.export(merged_file, format="mp3")
-                except Exception as e:
-                    st.error(f"❌ Failed to export merged audio: {e}")
-                    merged_file = None
-
-                # --- AI Chapter Titles ---
-                chunks = chunk_text(text, max_words=800)
-                titles = generate_chapter_titles(chunks)
-
-                # Write WebVTT with AI titles
-                vtt_ai_path = write_vtt_with_titles(durations, titles, "chapters_ai.vtt")
-
-                # Save manifest JSON
-                manifest_file = "chapters_with_titles.json"
-                try:
-                    chapters = [{"index": i+1, "title": t, "duration_sec": d/1000} 
+# = = [{"index": i+1, "title": t, "duration_sec": d/1000} 
                                 for i, (t, d) in enumerate(zip(titles, durations))]
                     with open(manifest_file, "w", encoding="utf-8") as f:
                         json.dump({"chapters": chapters}, f, indent=2)
@@ -667,8 +538,6 @@ if st.button("Merge Audiobook"):
                     st.audio(merged_file, format="audio/mp3")
                     st.info("AI chapter markers are available in the WebVTT file for advanced players.")
 
-                # --- Chapter list ---
-                st.markdown("### 📚 Chapterimport requests
 
 HF_API_KEY = st.secrets["huggingface"]["api_key"]
 HF_HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
