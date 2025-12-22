@@ -468,30 +468,63 @@ else:
     if "text" not in st.session_state:
         st.session_state["text"] = ""
 
-    # --- Recording support (optional, requires streamlit-webrtc locally) ---
-    can_record = False
-    try:
-        from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
-        can_record = True
-    except Exception:
-        st.info("Recording is available locally with streamlit-webrtc. "
-                "Add 'streamlit-webrtc' to requirements-local.txt to enable recording in local dev.")
+    # --- Upload audio file (works everywhere) ---
+    uploaded_audio = st.file_uploader(
+        "Upload audio file",
+        type=["wav", "mp3", "ogg", "flac", "m4a"],
+        key="audio_uploader"
+    )
 
-    if can_record:
-        class AudioCollector(AudioProcessorBase):
-            def __init__(self):
-                self.samples = []
+    # --- Recognition engine choice ---
+    engine_stt = st.radio(
+        "Recognition engine",
+        ["Cloud speech (free)", "Offline speech (experimental)"],
+        key="stt_radio"
+    )
 
-            def recv_audio(self, frame):
-                # Collect raw audio frames
-                self.samples.append(frame.to_ndarray())
-                return frame
+    # --- Convert uploaded audio to text ---
+    if uploaded_audio and st.button("📝 Convert to text", key="converttext_button"):
+        path = save_uploaded_audio(uploaded_audio)   # uses your helper
+        if path:
+            transcript = transcribe_file(path, engine_stt)  # uses your helper
+            if transcript and transcript.strip():
+                st.session_state["text"] = transcript
+                st.success("✅ Transcription complete")
+                st.text_area("Transcribed text (now available to AI Enhancements)", transcript, height=250, key="transcribedtext")
+                st.download_button(
+                    "Download transcription (TXT)",
+                    transcript,
+                    file_name="transcription.txt",
+                    key="download_transcription"
+                )
+                st.info("You can now use the AI Enhancements dropdown to summarize, translate, etc.")
+            else:
+                st.error("No transcription result produced.")
+        else:
+            st.error("Failed to save the uploaded audio. Please try again.")
 
-        st.write("Use Start to record. Stop to finalize, then download and upload for transcription.")
-        webrtcctx = webrtc_streamer(
-            key="speechcapture",
-            audioprocessor_factory=AudioCollector
-        )
+    # --- Recording support (only when running locally) ---
+    if not st.secrets.get("cloud", False):  # flag to disable in cloud
+        try:
+            from streamlit_webrtc import webrtc_streamer, AudioProcessorBase
+
+            class AudioCollector(AudioProcessorBase):
+                def __init__(self):
+                    self.samples = []
+
+                def recv_audio(self, frame):
+                    # Collect raw audio frames
+                    self.samples.append(frame.to_ndarray())
+                    return frame
+
+            st.write("Local recording enabled. Use Start to record, Stop to finalize, then download and upload for transcription.")
+            webrtcctx = webrtc_streamer(
+                key="speechcapture",
+                audioprocessor_factory=AudioCollector
+            )
+        except Exception:
+            st.info("Recording requires streamlit-webrtc installed locally.")
+    
         # Note: This demo collects frames but does not automatically save them.
 
     # --- Upload audio file ---
