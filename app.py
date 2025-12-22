@@ -668,37 +668,149 @@ if st.button("Merge Audiobook"):
                     st.info("AI chapter markers are available in the WebVTT file for advanced players.")
 
                 # --- Chapter list ---
-                st.markdown("### 📚 Chapter List (AI Titles)")
-                if manifest_file and chapters:
+                st.markdown("### 📚 Chapterimport requests
+
+HF_API_KEY = st.secrets["huggingface"]["api_key"]
+HF_HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
+
+def call_ai(task, text, target_lang=None):
+    try:
+        if task == "summarize":
+            url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+            resp = requests.post(url, headers=HF_HEADERS, json={"inputs": text})
+            return resp.json()[0]["summary_text"]
+
+        elif task == "translate":
+            model_map = {
+                "French": "Helsinki-NLP/opus-mt-en-fr",
+                "Spanish": "Helsinki-NLP/opus-mt-en-es",
+                "Arabic": "Helsinki-NLP/opus-mt-en-ar",
+                "Hausa": "Helsinki-NLP/opus-mt-en-ha",
+                "English": "Helsinki-NLP/opus-mt-ha-en"
+            }
+            model = model_map.get(target_lang, "Helsinki-NLP/opus-mt-en-fr")
+            url = f"https://api-inference.huggingface.co/models/{model}"
+            resp = requests.post(url, headers=HF_HEADERS, json={"inputs": text})
+            return resp.json()[0]["translation_text"]
+
+        elif task == "keywords":
+            url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+            payload = {"inputs": text,
+                       "parameters": {"candidate_labels": ["politics","economy","health","education","technology","culture","sports"]}}
+            resp = requests.post(url, headers=HF_HEADERS, json=payload)
+            return ", ".join(resp.json()["labels"][:5])
+
+        elif task == "sentiment":
+            url = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
+            resp = requests.post(url, headers=HF_HEADERS, json={"inputs": text})
+            return resp.json()[0]["label"]
+
+        elif task == "outline":
+            sentences = text.split(". ")
+            return "\n".join([f"- {s.strip()}" for s in sentences if s.strip()])
+
+        elif task == "ner":
+            url = "https://api-inference.huggingface.co/models/dslim/bert-base-NER"
+            resp = requests.post(url, headers=HF_HEADERS, json={"inputs": text})
+            entities = resp.json()[0]["entities"]
+            return ", ".join([f"{e['word']} ({e['entity']})" for e in entities])
+
+        elif task == "qa":
+            url = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
+            resp = requests.post(url, headers=HF_HEADERS,
+                                 json={"inputs": {"question": "What is the main topic?", "context": text}})
+            return resp.json()["answer"]
+
+        else:
+            return "❌ Unsupported task"
+    except Exception as e:
+        return f"❌ Error calling Hugging Face API: {e}"
+
+def generate_chapter_titles(chunks):
+    titles = []
+    for chunk in chunks:
+        try:
+            url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+            resp = requests.post(url, headers=HF_HEADERS, json={"inputs": chunk})
+            titles.append(resp.json()[0]["summary_text"])
+        except Exception:
+            titles.append(chunk[:50] + "...")
+    return titles
+
+def write_vtt_with_titles(durations, titles, outfile="chapters_ai.vtt"):
+    start_ms = 0
+    lines = ["WEBVTT", ""]
+    for i, (dur, title) in enumerate(zip(durations, titles)):
+        end_ms = start_ms + dur
+        lines.append(f"Chapter {i+1}: {title}")
+        lines.append(f"{ms_to_vtt(start_ms)} --> {ms_to_vtt(end_ms)}")
+        lines.append("")
+        start_ms = end_ms
+    with open(outfile, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return outfile
+
+# ============================================================
+# Unified AI Enhancements + Merge Audiobook Section with Dropdown
+# ============================================================
+st.divider()
+st.subheader("✨ AI Enhancements & Audiobook Tools (Hugging Face)")
+
+if 'text' in locals() and text and text.strip():
+    feature = st.selectbox("Choose an AI feature", 
+                           ["Summarize", "Translate", "Extract Keywords", "Sentiment Analysis",
+                            "Generate Outline", "Named Entity Recognition", "Question Answering", "Merge Audiobook"])
+
+    if st.button("Run Selected Feature"):
+        if feature == "Summarize":
+            st.write(call_ai("summarize", text))
+        elif feature == "Translate":
+            target_lang = st.selectbox("Choose translation language", ["French", "Spanish", "Arabic", "Hausa", "English"])
+            st.write(call_ai("translate", text, target_lang))
+        elif feature == "Extract Keywords":
+            st.write(call_ai("keywords", text))
+        elif feature == "Sentiment Analysis":
+            st.write(call_ai("sentiment", text))
+        elif feature == "Generate Outline":
+            st.write(call_ai("outline", text))
+        elif feature == "Named Entity Recognition":
+            st.write(call_ai("ner", text))
+        elif feature == "Question Answering":
+            st.write(call_ai("qa", text))
+        elif feature == "Merge Audiobook":
+            if audio_chunks:
+                try:
+                    merged = AudioSegment.empty()
+                    durations = []
+                    for chunk in audio_chunks:
+                        audio = AudioSegment.from_file(chunk, format="mp3")
+                        merged += audio
+                        durations.append(len(audio))
+
+                    merged_file = "audiobook.mp3"
+                    merged.export(merged_file, format="mp3")
+
+                    chunks = chunk_text(text, max_words=800)
+                    titles = generate_chapter_titles(chunks)
+                    vtt_ai_path = write_vtt_with_titles(durations, titles, "chapters_ai.vtt")
+
+                    manifest_file = "chapters_with_titles.json"
+                    chapters = [{"index": i+1, "title": t, "duration_sec": d/1000} 
+                                for i, (t, d) in enumerate(zip(titles, durations))]
+                    with open(manifest_file, "w", encoding="utf-8") as f:
+                        json.dump({"chapters": chapters}, f, indent=2)
+
+                    with open(merged_file, "rb") as f:
+                        st.download_button("Download Audiobook (MP3)", f, file_name=merged_file)
+                    with open(vtt_ai_path, "rb") as f:
+                        st.download_button("Download AI Chapter Markers (WebVTT)", f, file_name="chapters_ai.vtt")
+                    with open(manifest_file, "rb") as f:
+                        st.download_button("Download Chapters Manifest (JSON)", f, file_name=manifest_file)
+
+                    st.audio(merged_file, format="audio/mp3")
                     st.table(chapters)
 
-                # --- Jump to Chapter buttons ---
-                st.markdown("### 🎯 Jump to Chapter")
-                start_ms = 0
-                chapter_boundaries = []
-                for i, (title, dur) in enumerate(zip(titles, durations), start=1):
-                    end_ms = start_ms + dur
-                    chapter_boundaries.append((i, title, start_ms, end_ms))
-                    if st.button(f"Go to Chapter {i}: {title}"):
-                        st.write(f"⏩ Suggested start time: {start_ms/1000:.1f} seconds")
-                        st.info("Use this timestamp in your player to jump directly.")
-                    start_ms = end_ms
-
-                # --- Now Playing indicator ---
-                st.markdown("### 🎵 Now Playing")
-                current_time = st.number_input("Enter current playback time (seconds)", min_value=0.0, step=1.0)
-                active_chapter = None
-                for i, title, start_ms, end_ms in chapter_boundaries:
-                    if start_ms/1000 <= current_time < end_ms/1000:
-                        active_chapter = (i, title)
-                        break
-
-                if active_chapter:
-                    st.success(f"▶ Currently playing: Chapter {active_chapter[0]} — {active_chapter[1]}")
-                else:
-                    st.info("Playback time not within any chapter range.")
-
-                st.success("Audiobook merged successfully with AI chapter titles!")
-
-        except Exception as e:
-            st.error(f"Failed to merge audiobook: {e}")
+                except Exception as e:
+                    st.error(f"Failed to merge audiobook: {e}")
+else:
+    st.info("Provide text (via upload, typing, or transcription) to enable AI features.")
